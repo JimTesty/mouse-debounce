@@ -237,6 +237,7 @@ int main(int argc, char **argv) {
 
     if (app.options.mode == APP_MODE_FILTER) {
         debounce_sound_set_volume(app.options.sound_volume);
+        debounce_sound_play();
         debounce_filter_init(
             &app.filter,
             app.options.buttons,
