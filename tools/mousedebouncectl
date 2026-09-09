@@ -22,6 +22,7 @@ Usage: $0 COMMAND [ARGS...]
 Commands:
   install              copy app to ~/Applications and register LaunchAgent
   grant                request Accessibility and open its System Settings pane
+  reset-accessibility  reset stale Accessibility approval for this bundle ID
   start                start registered debounce service
   stop                 stop registered debounce service
   restart              restart registered debounce service
@@ -181,9 +182,10 @@ measure_session() {
     WAS_RUNNING=0
     if loaded && service_running; then
         WAS_RUNNING=1
-        echo "Pausing debounce service so measurement sees raw mouse events."
-        stop_quiet
     fi
+    # Measurement must see raw physical events, never our filtered/reposted stream.
+    stop_quiet
+    echo "Debounce service is stopped for raw measurement."
 
     trap measure_cleanup INT TERM HUP EXIT
 
@@ -251,6 +253,11 @@ case "${1:-}" in
         open "$ACCESSIBILITY_URL" >/dev/null 2>&1 || true
         echo "Accessibility is the only permission Mouse Debounce needs."
         echo "Enable 'Mouse Debounce' in the pane that opened, then run '$0 start'."
+        ;;
+    reset-accessibility)
+        tccutil reset Accessibility "$LABEL"
+        echo "Reset Accessibility approval for $LABEL."
+        echo "Now run: $0 grant"
         ;;
     start)
         if ! loaded; then

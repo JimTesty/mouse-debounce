@@ -44,9 +44,11 @@ void measurement_print_instructions(Measurement *m, double duration_seconds) {
         "  1. LEFT:   ~10 normal clicks, ~5 double-clicks, ~5 short/long drags.\n"
         "  2. RIGHT:  same if practical.\n"
         "  3. MIDDLE: ~10 clicks if you use it.\n"
-        "  4. WHEEL:  scroll smoothly in ONE direction for >=5 s at roughly steady speed,\n"
+        "  4. WHEEL:  scroll smoothly in ONE direction for >=1 s at roughly steady speed,\n"
         "             then repeat the other direction; also do a few ordinary scroll bursts.\n"
-        "     Wheel miss detection is intentionally conservative and only trusts stable runs.\n\n",
+        "     Wheel miss detection is intentionally conservative and only trusts stable runs.\n"
+        "     If the mouse behaves perfectly during this session, button calibration may not\n"
+        "     reveal chatter timings; rerun measurement when the fault is actually present.\n\n",
         duration_seconds > 0.0 ? " during this timed session" : "");
     if (duration_seconds > 0.0) {
         fprintf(m->out, "This measurement will auto-exit after %.1f seconds.\n\n", duration_seconds);
@@ -300,7 +302,9 @@ void measurement_print_summary(Measurement *m) {
         "\nNext test suggestions\n---------------------\n"
         "- Try the suggested button settings with: mousedebouncectl save <args>\n"
         "- Then: mousedebouncectl restart\n"
-        "- For wheel diagnosis, repeat: mousedebouncectl measure 60 and do long, steady\n"
-        "  one-direction scrolls. Lines marked <<< probable-*-miss or <<< possible-*-miss are candidates.\n");
+        "- For wheel diagnosis, repeat: mousedebouncectl measure 60 and do >=1 s steady\n"
+        "  one-direction scrolls. Lines marked <<< probable-*-miss or <<< possible-*-miss are candidates.\n"
+        "- If the mouse was behaving perfectly, do not overfit settings to this session; rerun\n"
+        "  when chatter/misses recur.\n");
     fflush(m->out);
 }
