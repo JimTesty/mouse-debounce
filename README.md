@@ -2,13 +2,16 @@
 
 A small, source-auditable macOS utility for repairing worn mouse-button chatter in software.
 
-Version **0.4.0** combines:
+Version **0.5.0** provides:
 
-- the two-threshold state-machine idea from `franzos/mouse-debounce`;
-- the useful macOS `CGEventTap` plumbing pattern from Vorssaint;
-- per-button timing, measurement statistics/recommendations, persistent config, and optional launchd lifecycle control.
-
-The filter handles **left, right, and middle buttons by default**. Wheel events are measured but never modified.
+- Linux `franzos/mouse-debounce`-style short-release repair;
+- minimal CoreGraphics event-tap plumbing inspired by Vorssaint;
+- left/right/middle filtering by default;
+- per-button timing inheritance;
+- live measurement with statistics/recommendations;
+- conservative missing-wheel-pulse diagnostics;
+- a human-readable persistent config;
+- launchd lifecycle control.
 
 ## Debounce algorithm
 
@@ -19,9 +22,7 @@ returning Down before hold timeout -> discard {Up, Down} as a bounce pair
 otherwise -> release the withheld Up
 ```
 
-Normal Down latency is unchanged. Only an Up that already looks suspicious is delayed.
-
-Defaults are now:
+Defaults:
 
 ```text
 short-ms = 20
@@ -29,143 +30,135 @@ hold-ms  = 20
 buttons  = left,right,middle
 ```
 
+## Timing clock
+
+Version 0.5 deliberately **does not use `CGEventGetTimestamp()` for debounce or measurement intervals**.
+
+Each event is timestamped when the event-tap callback receives it using macOS `CLOCK_UPTIME_RAW`, which directly returns nanoseconds. This avoids assuming anything about Quartz event-timestamp representation or CPU-specific Mach tick conversion.
+
+The <=20 ms debounce decision therefore means actual monotonic elapsed milliseconds at callback receipt. Event-tap scheduling jitter is normally tiny relative to the debounce window and is preferable to depending on undocumented/ambiguous timestamp behavior.
+
+When a withheld Up is reposted, its Quartz timestamp is refreshed by asking CoreGraphics for a current native event timestamp rather than converting the monotonic clock into Quartz units.
+
 ## Per-button timing and inheritance
 
-Every button can have separate thresholds:
+All buttons can have separate values:
 
 ```text
---left-short-ms 18
---left-hold-ms 16
---right-short-ms 20
---right-hold-ms 22
---middle-short-ms 25
---middle-hold-ms 20
+--left-short-ms 18 --left-hold-ms 16
+--right-short-ms 20 --right-hold-ms 22
+--middle-short-ms 25 --middle-hold-ms 20
 ```
 
-Global options still work:
+Global options set all buttons:
 
 ```text
 --short-ms 20 --hold-ms 20
 ```
 
-A global option sets all three buttons. Later arguments win, so this is useful:
-
-```text
---short-ms 20 --hold-ms 20 --middle-short-ms 30
-```
-
-If no global value was assigned and a button-specific value is missing, it inherits from explicitly set siblings:
-
-```text
---left-short-ms 10 --right-short-ms 30
-```
-
-resolves to:
-
-```text
-left=10, right=30, middle=20
-```
-
-If only one sibling is set, the unset buttons copy it. If no button is set, the built-in fallback is 20 ms.
+Later arguments win. If a per-button value is unset and no global value supplied it inherits the arithmetic mean of explicitly configured sibling buttons. With no configured siblings it uses the 20 ms default.
 
 ## Persistent config
 
-The default config path is:
+Default path:
 
 ```text
 ~/Library/Application Support/MouseDebounce/config.args
 ```
 
-This was chosen instead of `build/config.*` because rebuilds should never erase settings, and instead of writing a raw plist into `~/Library/Preferences` because a tiny human-readable argument file is easier to audit and edit.
-
-Example:
+The format is deliberately just app arguments plus optional `#` comments:
 
 ```text
-# MouseDebounce filter settings
 --buttons left,right,middle
 --short-ms 20
 --hold-ms 20
---middle-short-ms 25
 ```
 
-Syntax is intentionally simple: whitespace-separated arguments and `#` comments. Quoted arguments are not implemented because filter settings do not need them.
+Config loads first and CLI arguments override it.
 
-The config loads first; command-line arguments load afterward and therefore override it.
-
-Useful options:
-
-```text
---no-config
---config /some/other/config.args
---save-config
-```
-
-For example:
+Save settings and exit immediately:
 
 ```sh
-open -n build/MouseDebounce.app --args \
-  --short-ms 20 --hold-ms 20 --middle-short-ms 25 --save-config
+MouseDebounce --short-ms 20 --hold-ms 20 --save-config-and-exit
 ```
 
-`--save-config` writes a canonical resolved config and then continues running.
-
-## Measurement mode
-
-Measurement records:
-
-- Down -> Up press durations for left/right/middle;
-- Up -> next Down gaps for each button;
-- scroll-wheel timing/delta/direction data.
-
-Example:
+The recommended installed-app interface is:
 
 ```sh
-rm -f /tmp/mouse-debounce-measure.txt
-open -n build/MouseDebounce.app --args \
-  --measure --duration 60 --output /tmp/mouse-debounce-measure.txt
-
-tail -f /tmp/mouse-debounce-measure.txt
+tools/mousedebouncectl save --short-ms 20 --hold-ms 20
 ```
 
-At the end it prints basic statistics for each button and metric:
+If the launchd service was already running, `save` restarts it automatically so the new config takes effect. It does not leave another MouseDebounce process running.
+
+View saved settings:
+
+```sh
+tools/mousedebouncectl config
+```
+
+## Measurement
+
+Recommended interface:
+
+```sh
+tools/mousedebouncectl measure 60
+```
+
+This command:
+
+1. pauses the normal debounce service if it is running, so measurement sees raw mouse events;
+2. launches the signed `.app` through LaunchServices;
+3. mirrors the measurement log to the terminal live;
+4. auto-exits after the requested duration;
+5. restores the debounce service if it had been running.
+
+The persistent measurement log is:
 
 ```text
-n
-IQR outliers removed
-mean
-median
-90th percentile
-range
+~/Library/Logs/MouseDebounce.measure.log
 ```
 
-For threshold recommendation it examines timings up to 250 ms, searches for a clearly separated low-timing cluster, removes Tukey-IQR outliers *within that cluster*, and puts the suggested threshold halfway between the cleaned low cluster and the next cluster.
+`cat`-ing a measurement file is harmless: it only reads the file and cannot terminate the app. `cat` prints the current contents once and exits. For live viewing use `tail -f`, which is what `mousedebouncectl measure` does internally.
 
-Conceptually:
+At measurement start the app prints a suggested test procedure. Roughly:
+
+- left: normal clicks, double-clicks, short/long drags;
+- right: same;
+- middle: several clicks if used;
+- wheel: >=5 s smooth one-direction scrolling at roughly steady speed, then the opposite direction, plus ordinary scroll bursts.
+
+At session end it prints per-button:
+
+- sample count;
+- Tukey-IQR outliers removed;
+- mean, median, p90 and range;
+- conservative low/high cluster analysis;
+- suggested per-button settings and exact config/CLI arguments.
+
+## Wheel-miss diagnostics
+
+Version 0.5 still **does not synthesize missing wheel movement**. It now attempts to identify likely misses during stable discrete-wheel runs.
+
+The detector keeps a short rolling history of same-direction inter-event gaps. Once the local cadence is sufficiently stable, a new gap close to an integer multiple (2x through 10x) of that cadence is flagged:
 
 ```text
-bounce-ish timings     normal-ish timings
-5  7  8  10             55  60  75  90
-         ^                ^
-       max low          min high
-             \          /
-           suggestion ~33 ms
+WHEEL ... gap=83.2 ms ... <<< probable-V-miss=1 (local cadence 41.0 ms, ratio 2.03x)
 ```
 
-This is a heuristic, not an oracle. Two genuine very-fast clicks can have the same waveform as switch chatter. If no convincing split exists, the tool refuses to invent a direct recommendation for that button; it instead uses the average of measured siblings, or 20 ms if none are available.
+False-positive defenses include:
 
-Include soft clicks, deliberate double-clicks, and drag-selects during measurement so the distributions contain the cases you care about.
+- requiring at least several recent gaps;
+- median + MAD local cadence estimation;
+- rejecting unstable cadence;
+- resetting on direction changes;
+- labeling a same-direction acceleration reset (e.g. magnitude 5 -> 1) as lower-confidence, because it can be either a new gesture or a long miss that reset acceleration;
+- refusing to repair anything automatically.
 
-## Wheel misses
+This deliberately targets long smooth scrolling, where a missing pulse is actually inferable. `probable-*` flags preserve the local acceleration state; `possible-*` flags coincide with an acceleration reset and are weaker evidence. A pause or speed change can still resemble a miss, so flagged lines are evidence to inspect rather than proof.
 
-A completely missing wheel detent cannot be reconstructed reliably:
+If the detector performs well on real logs, automatic insertion can be added later as a separate opt-in feature.
 
-```text
-physical detent -> no observable event
-```
-
-Software cannot distinguish that from intentionally stopping the wheel. The measurement trace can still diagnose more recoverable faults such as isolated reverse-direction ticks or erratic deltas. Version 0.4 therefore does not synthesize wheel movement.
-
-## App bundle and macOS privacy identity
+## App bundle and privacy
 
 `make app` creates:
 
@@ -173,47 +166,28 @@ Software cannot distinguish that from intentionally stopping the wheel. The meas
 build/MouseDebounce.app
 ```
 
-The bundle is headless (`LSUIElement=true`) but gives macOS a proper application identity.
+The bundle is headless (`LSUIElement=true`) and requires only **Accessibility**. Input Monitoring is not required.
 
-**Mouse Debounce 0.4 requires only Accessibility permission.** Earlier versions unnecessarily requested both Input Monitoring and Accessibility. The filter needs an active CoreGraphics event tap because it sometimes suppresses a physical event and later posts a withheld Up. Measurement now deliberately uses that same active tap but returns every event unchanged. Because the app needs Accessibility for its normal job anyway, requesting a second, weaker Input Monitoring permission only for measurement adds complexity without improving practical security.
-
-`tools/mousedebouncectl grant` launches the installed app so it can request Accessibility, then opens the Accessibility pane. macOS often suppresses repeat permission dialogs after a previous allow/deny decision; in that case simply enable **Mouse Debounce** in the pane.
-
-The local build is ad-hoc signed. A stable Apple development signature is preferable if repeated rebuilds cause TCC to treat builds as different code identities.
-
-## launchd lifecycle control
-
-A native user LaunchAgent is cleaner than hunting PIDs with `ps` and `kill`.
-
-Build and install:
+Grant once:
 
 ```sh
-make app
 tools/mousedebouncectl install
-```
-
-Trigger/open the Accessibility permission flow once through LaunchServices:
-
-```sh
 tools/mousedebouncectl grant
 ```
 
-Then:
+Then enable **Mouse Debounce** in System Settings -> Privacy & Security -> Accessibility.
+
+## Service control
 
 ```sh
 tools/mousedebouncectl start
-tools/mousedebouncectl status
 tools/mousedebouncectl stop
 tools/mousedebouncectl restart
+tools/mousedebouncectl status
 tools/mousedebouncectl logs
-tools/mousedebouncectl uninstall
 ```
 
-The generated LaunchAgent includes `AssociatedBundleIdentifiers=io.mouse-debounce.MouseDebounce` so macOS has an explicit association between the LaunchAgent and the app bundle.
-
-The service reads the normal config file, so changing thresholds does not require rewriting the LaunchAgent.
-
-`uninstall` intentionally leaves the config file behind.
+`launchd` handles the normal long-running filter. Measurement is a finite, tracked LaunchServices session rather than another permanent service.
 
 ## Source map
 
@@ -221,55 +195,43 @@ The service reads the normal config file, so changing thresholds does not requir
 |---|---|
 | `src/debounce_logic.*` | Pure debounce state machine |
 | `src/timing_settings.*` | Per-button timing + sibling inheritance |
-| `src/statistics.*` | Portable IQR statistics and cluster-split heuristic |
-| `src/measurement.*` | Button/wheel measurement and recommendations |
-| `src/debounce_filter.*` | CoreGraphics adapter, timers, withheld-Up storage |
-| `src/mouse_button.*` | Platform-independent button names/types |
-| `src/mouse_events.*` | CoreGraphics mouse-event decoding |
-| `src/config_file.*` | Tiny config.args reader/writer |
+| `src/statistics.*` | IQR statistics and threshold heuristic |
+| `src/wheel_analysis.*` | Portable local-cadence missing-pulse detector |
+| `src/monotonic_clock.*` | macOS monotonic nanosecond receipt clock |
+| `src/measurement.*` | Button/wheel tracing and recommendations |
+| `src/debounce_filter.*` | CoreGraphics adapter/timers/withheld Ups |
+| `src/mouse_button.*` | Portable button types/names |
+| `src/mouse_events.*` | CoreGraphics event decoding/native timestamps |
+| `src/config_file.*` | Tiny `config.args` reader/writer |
 | `src/event_tap.*` | Minimal `CGEventTap` lifecycle |
-| `src/permissions.*` | Single Accessibility permission request/check |
+| `src/permissions.*` | Accessibility permission request/check |
 | `src/signal_bridge.*` | SIGINT/SIGTERM -> run-loop shutdown |
-| `src/options.*` | CLI/config parsing and precedence |
-| `src/main.c` | Wiring only |
-| `tools/mousedebouncectl` | launchd install/start/stop/status wrapper |
+| `src/options.*` | CLI/config parsing |
+| `src/main.c` | Wiring |
+| `tools/mousedebouncectl` | install/service/measure/save wrapper |
 
-## Build and tests
+## Build/tests
 
-Requires Apple's command-line developer tools on macOS:
+On macOS with Apple command-line developer tools:
 
 ```sh
 make
 ```
 
-Portable unit tests cover:
+Portable tests cover:
 
 - debounce state transitions;
-- timing inheritance/defaults;
-- IQR removal and threshold-cluster detection.
+- timing inheritance;
+- IQR/threshold statistics;
+- missing-wheel-pulse cadence logic.
 
-Run only tests:
+This Linux build environment can execute those portable tests, but cannot link the actual macOS CoreGraphics app.
 
-```sh
-make test
-```
+## Audit surface
 
-## Safety / audit surface
+The filter has no network code, plug-ins or updater. It creates one CoreGraphics event tap, reads its tiny explicit config, suppresses mouse-button events only when required by the state machine, and may repost only a previously withheld Up. Measurement writes only its requested log. `mousedebouncectl` uses ordinary macOS `launchctl`, `open`, `tail` and filesystem operations described above.
 
-The filtering process:
-
-- creates one CoreGraphics event tap;
-- observes/suppresses only left/right/middle Down/Up events;
-- posts only a previously withheld Up;
-- has no network code;
-- launches no subprocesses;
-- dynamically loads no plug-ins;
-- reads only its explicit tiny config file;
-- writes only an explicitly requested measurement output or config save.
-
-The optional shell control script copies the app into `~/Applications`, writes/removes one user LaunchAgent plist, and calls Apple's `launchctl` / `open` commands.
-
-The source remains GPL-3.0-or-later because it intentionally derives design ideas from GPL-3.0-or-later projects:
+GPL-3.0-or-later, reflecting the GPL projects whose design ideas were intentionally reused:
 
 - https://github.com/franzos/mouse-debounce
 - https://github.com/vorssaint/vorssaint-utils

@@ -20,7 +20,8 @@ typedef struct {
     const char *output_path;
     double duration_seconds;
     bool use_config;
-    bool save_config;
+    bool save_config_and_exit;
+    const char *pid_file;
     char config_path[CONFIG_PATH_SIZE];
 } AppOptions;
 

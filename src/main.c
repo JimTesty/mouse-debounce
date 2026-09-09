@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 typedef struct {
     AppOptions options;
@@ -23,6 +24,7 @@ typedef struct {
     FILE *output;
     CFRunLoopTimerRef duration_timer;
     bool stopping;
+    bool pid_file_written;
 } App;
 
 static CGEventRef app_event_handler(
@@ -87,7 +89,25 @@ static bool setup_duration_timer(App *app) {
     return true;
 }
 
+static bool write_pid_file(App *app) {
+    if (app->options.pid_file == NULL) return true;
+    FILE *f = fopen(app->options.pid_file, "w");
+    if (f == NULL) return false;
+    fprintf(f, "%ld\n", (long)getpid());
+    bool ok = !ferror(f) && fclose(f) == 0;
+    if (!ok) return false;
+    app->pid_file_written = true;
+    return true;
+}
+
+static void remove_pid_file(App *app) {
+    if (!app->pid_file_written || app->options.pid_file == NULL) return;
+    (void)unlink(app->options.pid_file);
+    app->pid_file_written = false;
+}
+
 static void cleanup(App *app) {
+    remove_pid_file(app);
     if (app->duration_timer != NULL) {
         CFRunLoopTimerInvalidate(app->duration_timer);
         CFRelease(app->duration_timer);
@@ -130,7 +150,7 @@ int main(int argc, char **argv) {
         setvbuf(stdout, NULL, _IOLBF, 0);
     }
 
-    if (app.options.save_config) {
+    if (app.options.save_config_and_exit) {
         if (!config_write_settings(
                 app.options.config_path,
                 &app.options.timing,
@@ -140,6 +160,14 @@ int main(int argc, char **argv) {
             return 1;
         }
         fprintf(app.output, "Saved config: %s\n", app.options.config_path);
+        cleanup(&app);
+        return 0;
+    }
+
+    if (!write_pid_file(&app)) {
+        fprintf(app.output, "Could not write pid file: %s\n", app.options.pid_file);
+        cleanup(&app);
+        return 1;
     }
 
     if (!permissions_request_accessibility()) {
@@ -189,8 +217,7 @@ int main(int argc, char **argv) {
     }
 
     if (app.options.mode == APP_MODE_MEASURE) {
-        fprintf(app.output,
-            "Measuring left/right/middle button timing and wheel events; nothing is modified.\n");
+        measurement_print_instructions(&app.measurement, app.options.duration_seconds);
     } else {
         fprintf(app.output, "Mouse Debounce active:\n");
         for (int button = 0; button < MOUSE_BUTTON_COUNT; ++button) {

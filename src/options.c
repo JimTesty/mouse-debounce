@@ -43,11 +43,11 @@ void options_print_usage(const char *argv0) {
         "Config:\n"
         "  --config PATH      use a different config.args file\n"
         "  --no-config        ignore the default config file\n"
-        "  --save-config      save resolved filter settings, then continue\n"
+        "  --save-config-and-exit  save resolved filter settings and exit\n"
         "\n"
         "Default config: ~/Library/Application Support/MouseDebounce/config.args\n"
         "Default buttons: left,right,middle\n"
-        "Measurement records wheel events but never modifies them.\n",
+        "Measurement diagnoses wheel timing but never modifies wheel events.\n",
         argv0, argv0, DEFAULT_SHORT_MS, DEFAULT_HOLD_MS);
 }
 
@@ -101,8 +101,11 @@ static bool parse_sequence(
             options->output_path = argv[++i];
         } else if (strcmp(arg, "--duration") == 0) {
             if (i + 1 >= argc || !parse_nonnegative_double(argv[++i], &options->duration_seconds)) return false;
-        } else if (strcmp(arg, "--save-config") == 0) {
-            options->save_config = true;
+        } else if (strcmp(arg, "--save-config-and-exit") == 0) {
+            options->save_config_and_exit = true;
+        } else if (strcmp(arg, "--pid-file") == 0) {
+            if (i + 1 >= argc) return false;
+            options->pid_file = argv[++i];
         } else if (strcmp(arg, "--config") == 0) {
             if (i + 1 >= argc) return false;
             ++i; /* path was handled during pre-scan */

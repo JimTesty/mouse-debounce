@@ -9,27 +9,66 @@ BIN="$APP/Contents/MacOS/MouseDebounce"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 LOG="$HOME/Library/Logs/MouseDebounce.log"
 ERRLOG="$HOME/Library/Logs/MouseDebounce.err.log"
+MEASURE_LOG="$HOME/Library/Logs/MouseDebounce.measure.log"
+MEASURE_PID="$HOME/Library/Application Support/MouseDebounce/measure.pid"
+CONFIG="$HOME/Library/Application Support/MouseDebounce/config.args"
 SOURCE_APP="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)/build/MouseDebounce.app"
 ACCESSIBILITY_URL="x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
 
 usage() {
     cat <<USAGE
-Usage: $0 COMMAND
+Usage: $0 COMMAND [ARGS...]
 
 Commands:
-  install    copy the app to ~/Applications and register the LaunchAgent
-  grant      ask for Accessibility and open its System Settings pane
-  start      start the registered service
-  stop       stop it cleanly with SIGTERM
-  restart    restart it
-  status     show registered/running/stopped status and recent failure logs
-  logs       tail stdout/stderr logs
-  uninstall  unregister service and remove installed app/plist (keeps config)
+  install              copy app to ~/Applications and register LaunchAgent
+  grant                request Accessibility and open its System Settings pane
+  start                start registered debounce service
+  stop                 stop registered debounce service
+  restart              restart registered debounce service
+  status               show registered/running/stopped status
+  measure [SEC]        live measurement; default 60 s; raw filter is paused/restored
+  save [APP ARGS...]   save config.args and exit; restart service if it was running
+  config               print saved config
+  logs                 follow service stdout/stderr logs
+  uninstall            unregister service and remove app/plist (keeps config/logs)
 USAGE
 }
 
 loaded() {
     launchctl print "$SERVICE" >/dev/null 2>&1
+}
+
+field() {
+    launchctl print "$SERVICE" 2>/dev/null | sed -n "s/^[[:space:]]*$1 = //p" | head -n 1
+}
+
+service_pid() {
+    field pid || true
+}
+
+service_running() {
+    [ -n "$(service_pid)" ]
+}
+
+wait_stopped() {
+    i=0
+    while service_running && [ "$i" -lt 30 ]; do
+        sleep 0.1
+        i=$((i + 1))
+    done
+}
+
+stop_quiet() {
+    if loaded && service_running; then
+        launchctl kill SIGTERM "$SERVICE" >/dev/null 2>&1 || true
+        wait_stopped
+    fi
+}
+
+start_quiet() {
+    if loaded; then
+        launchctl kickstart "$SERVICE" >/dev/null 2>&1 || true
+    fi
 }
 
 install_service() {
@@ -76,18 +115,14 @@ PLIST
     echo "Installed and registered. Next: $0 grant ; $0 start"
 }
 
-field() {
-    launchctl print "$SERVICE" 2>/dev/null | sed -n "s/^[[:space:]]*$1 = //p" | head -n 1
-}
-
 status_service() {
     if ! loaded; then
         echo "MouseDebounce: NOT REGISTERED"
-        exit 1
+        return 1
     fi
 
     state="$(field state || true)"
-    pid="$(field pid || true)"
+    pid="$(service_pid)"
     exit_code="$(field 'last exit code' || true)"
 
     if [ -n "$pid" ]; then
@@ -109,6 +144,99 @@ status_service() {
     fi
 }
 
+measure_cleanup() {
+    code=$?
+    trap - INT TERM HUP EXIT
+
+    if [ -f "$MEASURE_PID" ]; then
+        mpid="$(cat "$MEASURE_PID" 2>/dev/null || true)"
+        if [ -n "$mpid" ] && kill -0 "$mpid" 2>/dev/null; then
+            kill -TERM "$mpid" 2>/dev/null || true
+        fi
+    fi
+    [ -n "${TAIL_PID:-}" ] && kill "$TAIL_PID" 2>/dev/null || true
+    [ -n "${OPEN_PID:-}" ] && kill "$OPEN_PID" 2>/dev/null || true
+    rm -f "$MEASURE_PID"
+
+    if [ "${WAS_RUNNING:-0}" -eq 1 ]; then
+        start_quiet
+        echo "Restored debounce service."
+    fi
+    return "$code"
+}
+
+measure_session() {
+    if [ ! -d "$APP" ]; then
+        echo "Not installed; run '$0 install' first." >&2
+        exit 1
+    fi
+
+    duration="${1:-60}"
+    if [ "$#" -gt 0 ]; then shift; fi
+
+    mkdir -p "$HOME/Library/Logs" "$(dirname "$MEASURE_PID")"
+    : > "$MEASURE_LOG"
+    rm -f "$MEASURE_PID"
+
+    WAS_RUNNING=0
+    if loaded && service_running; then
+        WAS_RUNNING=1
+        echo "Pausing debounce service so measurement sees raw mouse events."
+        stop_quiet
+    fi
+
+    trap measure_cleanup INT TERM HUP EXIT
+
+    # The app writes line-buffered output to the log; tail mirrors it live here.
+    tail -n +1 -f "$MEASURE_LOG" &
+    TAIL_PID=$!
+
+    open -n -W "$APP" --args \
+        --no-config --measure --buttons left,right,middle \
+        --duration "$duration" --output "$MEASURE_LOG" --pid-file "$MEASURE_PID" "$@" &
+    OPEN_PID=$!
+
+    set +e
+    wait "$OPEN_PID"
+    result=$?
+    set -e
+    sleep 0.15
+
+    kill "$TAIL_PID" 2>/dev/null || true
+    wait "$TAIL_PID" 2>/dev/null || true
+    TAIL_PID=""
+    OPEN_PID=""
+    rm -f "$MEASURE_PID"
+
+    trap - INT TERM HUP EXIT
+    if [ "$WAS_RUNNING" -eq 1 ]; then
+        start_quiet
+        echo "Restored debounce service."
+    fi
+    echo "Measurement log: $MEASURE_LOG"
+    return "$result"
+}
+
+save_config() {
+    if [ ! -x "$BIN" ]; then
+        echo "Not installed; run '$0 install' first." >&2
+        exit 1
+    fi
+    was=0
+    if loaded && service_running; then was=1; fi
+
+    "$BIN" --save-config-and-exit "$@"
+
+    if [ "$was" -eq 1 ]; then
+        launchctl kickstart -k "$SERVICE" >/dev/null 2>&1 || true
+        sleep 0.2
+        echo "Restarted running debounce service with the saved settings."
+        status_service || true
+    else
+        echo "Service was not running; settings will apply next time it starts."
+    fi
+}
+
 case "${1:-}" in
     install)
         install_service
@@ -118,15 +246,11 @@ case "${1:-}" in
             echo "Not installed; run '$0 install' first." >&2
             exit 1
         fi
-        # Launch through LaunchServices so TCC attributes the request to the app bundle.
         open -n "$APP" --args --duration 1
         sleep 1
-        # macOS may remember an earlier denial and suppress a repeat dialog.  Always
-        # open the correct pane so the existing toggle can be enabled manually.
         open "$ACCESSIBILITY_URL" >/dev/null 2>&1 || true
         echo "Accessibility is the only permission Mouse Debounce needs."
         echo "Enable 'Mouse Debounce' in the pane that opened, then run '$0 start'."
-        echo "If no dialog appeared, that usually means macOS remembered an earlier TCC decision."
         ;;
     start)
         if ! loaded; then
@@ -142,8 +266,7 @@ case "${1:-}" in
             echo "MouseDebounce: not registered"
             exit 1
         fi
-        launchctl kill SIGTERM "$SERVICE" 2>/dev/null || true
-        sleep 0.2
+        stop_quiet
         status_service
         ;;
     restart)
@@ -158,6 +281,22 @@ case "${1:-}" in
     status)
         status_service
         ;;
+    measure)
+        shift
+        measure_session "$@"
+        ;;
+    save)
+        shift
+        save_config "$@"
+        ;;
+    config)
+        if [ -f "$CONFIG" ]; then
+            cat "$CONFIG"
+        else
+            echo "No saved config: $CONFIG"
+            exit 1
+        fi
+        ;;
     logs)
         mkdir -p "$HOME/Library/Logs"
         touch "$LOG" "$ERRLOG"
@@ -167,7 +306,7 @@ case "${1:-}" in
         if loaded; then launchctl bootout "$SERVICE" >/dev/null 2>&1 || true; fi
         rm -f "$PLIST"
         rm -rf "$APP"
-        echo "Removed app and LaunchAgent. Config was intentionally kept."
+        echo "Removed app and LaunchAgent. Config/logs were intentionally kept."
         ;;
     *)
         usage

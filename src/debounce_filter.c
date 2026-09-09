@@ -1,7 +1,8 @@
 #include "debounce_filter.h"
 
+#include "monotonic_clock.h"
+
 #include <inttypes.h>
-#include <mach/mach_time.h>
 #include <string.h>
 
 #define OWN_EVENT_MAGIC INT64_C(0x4d44424e43454f02)
@@ -12,13 +13,6 @@ typedef struct {
 } TimerContext;
 
 static TimerContext g_timer_contexts[MOUSE_BUTTON_COUNT];
-
-static uint64_t uptime_nanoseconds(void) {
-    static mach_timebase_info_data_t timebase = {0, 0};
-    if (timebase.denom == 0) (void)mach_timebase_info(&timebase);
-    __uint128_t ns = (__uint128_t)mach_absolute_time() * timebase.numer / timebase.denom;
-    return (uint64_t)ns;
-}
 
 static uint64_t ms_to_ns(double ms) {
     if (ms <= 0.0) return 0;
@@ -40,7 +34,8 @@ static void post_owned_up(DebounceButtonRuntime *runtime) {
     runtime->pending_up = NULL;
     debounce_pending_emitted(&runtime->logic);
 
-    CGEventSetTimestamp(event, uptime_nanoseconds());
+    CGEventTimestamp ts = mouse_current_event_timestamp();
+    if (ts != 0) CGEventSetTimestamp(event, ts);
     CGEventSetIntegerValueField(event, kCGEventSourceUserData, OWN_EVENT_MAGIC);
     CGEventPost(kCGHIDEventTap, event);
     CFRelease(event);
@@ -70,7 +65,8 @@ static void timer_callback(CFRunLoopTimerRef timer, void *info) {
         CGEventRef event = runtime->pending_up;
         runtime->pending_up = NULL;
         debounce_pending_emitted(&runtime->logic);
-        CGEventSetTimestamp(event, uptime_nanoseconds());
+        CGEventTimestamp ts = mouse_current_event_timestamp();
+        if (ts != 0) CGEventSetTimestamp(event, ts);
         CGEventSetIntegerValueField(event, kCGEventSourceUserData, OWN_EVENT_MAGIC);
         CGEventPost(kCGHIDEventTap, event);
         CFRelease(event);
@@ -129,7 +125,7 @@ CGEventRef debounce_filter_handle(
     }
 
     DebounceButtonRuntime *runtime = &filter->button[mouse.button];
-    uint64_t now_ns = CGEventGetTimestamp(event);
+    uint64_t now_ns = monotonic_now_ns();
 
     if (mouse.is_down) {
         DebounceAction action = debounce_on_down(&runtime->logic, now_ns);

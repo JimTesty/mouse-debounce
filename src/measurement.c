@@ -1,15 +1,27 @@
 #include "measurement.h"
 
+#include "monotonic_clock.h"
 #include "statistics.h"
 #include "timing_settings.h"
 
 #include <inttypes.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define ANALYSIS_WINDOW_MS 250.0
 
 static void add_sample(double *samples, size_t *count, double value) {
     if (*count < MEASUREMENT_MAX_SAMPLES) samples[(*count)++] = value;
+}
+
+static double elapsed_seconds(const Measurement *m, uint64_t now_ns) {
+    if (m->first_ns == 0 || now_ns < m->first_ns) return 0.0;
+    return (double)(now_ns - m->first_ns) / 1e9;
+}
+
+static double interval_ms(uint64_t newer_ns, uint64_t older_ns) {
+    if (older_ns == 0 || newer_ns < older_ns) return -1.0;
+    return monotonic_ns_to_ms(newer_ns - older_ns);
 }
 
 void measurement_init(
@@ -20,24 +32,40 @@ void measurement_init(
     memset(measurement, 0, sizeof(*measurement));
     measurement->out = out != NULL ? out : stdout;
     for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) measurement->enabled[i] = enabled[i];
+    wheel_analyzer_init(&measurement->wheel_vertical);
+    wheel_analyzer_init(&measurement->wheel_horizontal);
 }
 
-static void handle_button(Measurement *m, CGEventType type, CGEventRef event) {
+void measurement_print_instructions(Measurement *m, double duration_seconds) {
+    fprintf(m->out,
+        "Measurement uses CLOCK_UPTIME_RAW at event-tap receipt; CGEvent timestamps are not\n"
+        "used for debounce timing. Nothing is modified.\n\n"
+        "Suggested test%s:\n"
+        "  1. LEFT:   ~10 normal clicks, ~5 double-clicks, ~5 short/long drags.\n"
+        "  2. RIGHT:  same if practical.\n"
+        "  3. MIDDLE: ~10 clicks if you use it.\n"
+        "  4. WHEEL:  scroll smoothly in ONE direction for >=5 s at roughly steady speed,\n"
+        "             then repeat the other direction; also do a few ordinary scroll bursts.\n"
+        "     Wheel miss detection is intentionally conservative and only trusts stable runs.\n\n",
+        duration_seconds > 0.0 ? " during this timed session" : "");
+    if (duration_seconds > 0.0) {
+        fprintf(m->out, "This measurement will auto-exit after %.1f seconds.\n\n", duration_seconds);
+    }
+    fflush(m->out);
+}
+
+static void handle_button(Measurement *m, CGEventType type, CGEventRef event, uint64_t now_ns) {
     MouseButtonEvent mouse;
     if (!mouse_button_from_event(type, event, &mouse) || !m->enabled[mouse.button]) return;
 
-    uint64_t now = CGEventGetTimestamp(event);
-    if (m->first_ns == 0) m->first_ns = now;
-    double elapsed_s = now >= m->first_ns ? (double)(now - m->first_ns) / 1e9 : 0.0;
+    if (m->first_ns == 0) m->first_ns = now_ns;
+    double elapsed_s = elapsed_seconds(m, now_ns);
     int64_t click_state = CGEventGetIntegerValueField(event, kCGMouseEventClickState);
 
     if (mouse.is_down) {
-        double gap = -1.0;
-        if (m->last_up_ns[mouse.button] != 0 && now >= m->last_up_ns[mouse.button]) {
-            gap = (double)(now - m->last_up_ns[mouse.button]) / 1e6;
-            add_sample(m->gap_ms[mouse.button], &m->gap_count[mouse.button], gap);
-        }
-        m->last_down_ns[mouse.button] = now;
+        double gap = interval_ms(now_ns, m->last_up_ns[mouse.button]);
+        if (gap >= 0.0) add_sample(m->gap_ms[mouse.button], &m->gap_count[mouse.button], gap);
+        m->last_down_ns[mouse.button] = now_ns;
         if (gap >= 0.0) {
             fprintf(m->out,
                 "%9.3fs  %-6s down   gap-from-up=%8.1f ms  clickState=%" PRId64 "\n",
@@ -48,12 +76,9 @@ static void handle_button(Measurement *m, CGEventType type, CGEventRef event) {
                 elapsed_s, mouse_button_name(mouse.button), click_state);
         }
     } else {
-        double held = -1.0;
-        if (m->last_down_ns[mouse.button] != 0 && now >= m->last_down_ns[mouse.button]) {
-            held = (double)(now - m->last_down_ns[mouse.button]) / 1e6;
-            add_sample(m->press_ms[mouse.button], &m->press_count[mouse.button], held);
-        }
-        m->last_up_ns[mouse.button] = now;
+        double held = interval_ms(now_ns, m->last_down_ns[mouse.button]);
+        if (held >= 0.0) add_sample(m->press_ms[mouse.button], &m->press_count[mouse.button], held);
+        m->last_up_ns[mouse.button] = now_ns;
         if (held >= 0.0) {
             fprintf(m->out,
                 "%9.3fs  %-6s up     press-held=%8.1f ms  clickState=%" PRId64 "\n",
@@ -67,14 +92,21 @@ static void handle_button(Measurement *m, CGEventType type, CGEventRef event) {
     fflush(m->out);
 }
 
-static void handle_scroll(Measurement *m, CGEventRef event) {
-    uint64_t now = CGEventGetTimestamp(event);
-    if (m->first_ns == 0) m->first_ns = now;
-    double elapsed_s = now >= m->first_ns ? (double)(now - m->first_ns) / 1e9 : 0.0;
-    double gap_ms = m->last_scroll_ns != 0 && now >= m->last_scroll_ns
-        ? (double)(now - m->last_scroll_ns) / 1e6
-        : -1.0;
-    m->last_scroll_ns = now;
+static int sign_i64(int64_t v) {
+    return (v > 0) - (v < 0);
+}
+
+static int magnitude_i64(int64_t v) {
+    if (v < 0) v = -v;
+    if (v > 2147483647) return 2147483647;
+    return (int)v;
+}
+
+static void handle_scroll(Measurement *m, CGEventRef event, uint64_t now_ns) {
+    if (m->first_ns == 0) m->first_ns = now_ns;
+    double elapsed_s = elapsed_seconds(m, now_ns);
+    double gap_ms = interval_ms(now_ns, m->last_scroll_ns);
+    m->last_scroll_ns = now_ns;
     m->scroll_count++;
 
     int64_t line_v = CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis1);
@@ -83,26 +115,63 @@ static void handle_scroll(Measurement *m, CGEventRef event) {
     int64_t point_h = CGEventGetIntegerValueField(event, kCGScrollWheelEventPointDeltaAxis2);
     int64_t continuous = CGEventGetIntegerValueField(event, kCGScrollWheelEventIsContinuous);
 
+    WheelDiagnostic diagnostic;
+    memset(&diagnostic, 0, sizeof(diagnostic));
+    const char *axis = NULL;
+    if (continuous == 0) {
+        if (line_v != 0 || point_v != 0) {
+            int64_t source = point_v != 0 ? point_v : line_v;
+            int64_t magnitude_source = line_v != 0 ? line_v : point_v;
+            diagnostic = wheel_analyzer_observe(
+                &m->wheel_vertical,
+                monotonic_ns_to_ms(now_ns),
+                sign_i64(source),
+                magnitude_i64(magnitude_source));
+            axis = "V";
+        } else if (line_h != 0 || point_h != 0) {
+            int64_t source = point_h != 0 ? point_h : line_h;
+            int64_t magnitude_source = line_h != 0 ? line_h : point_h;
+            diagnostic = wheel_analyzer_observe(
+                &m->wheel_horizontal,
+                monotonic_ns_to_ms(now_ns),
+                sign_i64(source),
+                magnitude_i64(magnitude_source));
+            axis = "H";
+        }
+    }
+
     if (gap_ms >= 0.0) {
         fprintf(m->out,
             "%9.3fs  WHEEL   v=%4" PRId64 " h=%4" PRId64
-            " point=(%4" PRId64 ",%4" PRId64 ") gap=%7.1f ms continuous=%" PRId64 "\n",
+            " point=(%4" PRId64 ",%4" PRId64 ") gap=%7.1f ms continuous=%" PRId64,
             elapsed_s, line_v, line_h, point_v, point_h, gap_ms, continuous);
     } else {
         fprintf(m->out,
             "%9.3fs  WHEEL   v=%4" PRId64 " h=%4" PRId64
-            " point=(%4" PRId64 ",%4" PRId64 ") gap=      - continuous=%" PRId64 "\n",
+            " point=(%4" PRId64 ",%4" PRId64 ") gap=      - continuous=%" PRId64,
             elapsed_s, line_v, line_h, point_v, point_h, continuous);
     }
+
+    if (diagnostic.missing_candidate) {
+        fprintf(m->out,
+            "  <<< %s-%s-miss=%d (local cadence %.1f ms, ratio %.2fx)",
+            diagnostic.low_confidence ? "possible" : "probable",
+            axis != NULL ? axis : "wheel",
+            diagnostic.missing_count,
+            diagnostic.cadence_ms,
+            diagnostic.ratio);
+    }
+    fputc('\n', m->out);
     fflush(m->out);
 }
 
 void measurement_handle(Measurement *measurement, CGEventType type, CGEventRef event) {
+    uint64_t now_ns = monotonic_now_ns();
     if (type == kCGEventScrollWheel) {
-        handle_scroll(measurement, event);
+        handle_scroll(measurement, event, now_ns);
         return;
     }
-    handle_button(measurement, type, event);
+    handle_button(measurement, type, event, now_ns);
 }
 
 static void print_stats_line(FILE *out, const char *label, const double *samples, size_t count) {
@@ -188,9 +257,8 @@ void measurement_print_summary(Measurement *m) {
 
     fprintf(m->out,
         "\nSuggested settings\n------------------\n"
-        "These are heuristic: the tool looks for a separated low-timing cluster, removes\n"
-        "Tukey-IQR outliers within that cluster, and places the threshold halfway to the\n"
-        "next cluster. Missing buttons inherit measured siblings; otherwise they use 20 ms.\n");
+        "Heuristic only: separated low-timing clusters are analyzed after Tukey-IQR\n"
+        "outlier removal. Missing buttons inherit measured siblings; otherwise 20 ms.\n");
 
     for (int button = 0; button < MOUSE_BUTTON_COUNT; ++button) {
         if (!m->enabled[button]) continue;
@@ -217,10 +285,22 @@ void measurement_print_summary(Measurement *m) {
     }
     fprintf(m->out, "\n");
 
+    size_t strong = m->wheel_vertical.strong_missing_events +
+        m->wheel_horizontal.strong_missing_events;
+    size_t weak = m->wheel_vertical.weak_missing_events +
+        m->wheel_horizontal.weak_missing_events;
     fprintf(m->out,
-        "\nWHEEL: %zu scroll events observed. A completely missing wheel event leaves no\n"
-        "observable evidence, so this tool does not invent replacement wheel events.\n"
-        "Inspect the wheel trace for isolated reverse ticks or erratic deltas instead.\n",
-        m->scroll_count);
+        "\nWHEEL: %zu scroll events observed; %zu probable + %zu possible missing pulse(s)\n"
+        "flagged in locally stable discrete-wheel runs. Possible = the enlarged gap also\n"
+        "reset macOS scroll acceleration, which can mean either a new gesture or a real miss.\n"
+        "These are diagnostics only; no wheel events are synthesized.\n",
+        m->scroll_count, strong, weak);
+
+    fprintf(m->out,
+        "\nNext test suggestions\n---------------------\n"
+        "- Try the suggested button settings with: mousedebouncectl save <args>\n"
+        "- Then: mousedebouncectl restart\n"
+        "- For wheel diagnosis, repeat: mousedebouncectl measure 60 and do long, steady\n"
+        "  one-direction scrolls. Lines marked <<< probable-*-miss or <<< possible-*-miss are candidates.\n");
     fflush(m->out);
 }

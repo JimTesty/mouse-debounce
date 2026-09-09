@@ -2,6 +2,7 @@
 #define MOUSE_DEBOUNCE_MEASUREMENT_H
 
 #include "mouse_events.h"
+#include "wheel_analysis.h"
 
 #include <ApplicationServices/ApplicationServices.h>
 #include <stdbool.h>
@@ -22,6 +23,8 @@ typedef struct {
     size_t gap_count[MOUSE_BUTTON_COUNT];
     uint64_t last_scroll_ns;
     size_t scroll_count;
+    WheelAnalyzer wheel_vertical;
+    WheelAnalyzer wheel_horizontal;
 } Measurement;
 
 void measurement_init(
@@ -30,6 +33,7 @@ void measurement_init(
     FILE *out
 );
 void measurement_handle(Measurement *measurement, CGEventType type, CGEventRef event);
+void measurement_print_instructions(Measurement *measurement, double duration_seconds);
 void measurement_print_summary(Measurement *measurement);
 
 #endif

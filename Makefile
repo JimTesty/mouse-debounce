@@ -18,6 +18,8 @@ SOURCES := \
 	src/mouse_events.c \
 	src/timing_settings.c \
 	src/statistics.c \
+	src/wheel_analysis.c \
+	src/monotonic_clock.c \
 	src/debounce_logic.c \
 	src/debounce_filter.c \
 	src/measurement.c \
@@ -43,10 +45,11 @@ $(OBJ)/%.o: src/%.c
 	mkdir -p "$(OBJ)"
 	$(CC) $(CFLAGS) -Isrc -c $< -o $@
 
-test: $(BUILD)/test-debounce-logic $(BUILD)/test-timing-settings $(BUILD)/test-statistics
+test: $(BUILD)/test-debounce-logic $(BUILD)/test-timing-settings $(BUILD)/test-statistics $(BUILD)/test-wheel-analysis
 	$(BUILD)/test-debounce-logic
 	$(BUILD)/test-timing-settings
 	$(BUILD)/test-statistics
+	$(BUILD)/test-wheel-analysis
 
 $(BUILD)/test-debounce-logic: tests/test_debounce_logic.c src/debounce_logic.c src/debounce_logic.h
 	mkdir -p "$(BUILD)"
@@ -59,6 +62,10 @@ $(BUILD)/test-timing-settings: tests/test_timing_settings.c src/timing_settings.
 $(BUILD)/test-statistics: tests/test_statistics.c src/statistics.c src/statistics.h
 	mkdir -p "$(BUILD)"
 	$(CC) $(CFLAGS) -Isrc tests/test_statistics.c src/statistics.c -o $@
+
+$(BUILD)/test-wheel-analysis: tests/test_wheel_analysis.c src/wheel_analysis.c src/wheel_analysis.h
+	mkdir -p "$(BUILD)"
+	$(CC) $(CFLAGS) -Isrc tests/test_wheel_analysis.c src/wheel_analysis.c -lm -o $@
 
 run: app
 	open -n "$(APP)"
