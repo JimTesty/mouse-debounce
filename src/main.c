@@ -1,0 +1,191 @@
+#include "debounce_filter.h"
+#include "event_tap.h"
+#include "measurement.h"
+#include "mouse_events.h"
+#include "options.h"
+#include "permissions.h"
+#include "signal_bridge.h"
+
+#include <ApplicationServices/ApplicationServices.h>
+#include <CoreFoundation/CoreFoundation.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct {
+    AppOptions options;
+    EventTap event_tap;
+    DebounceFilter filter;
+    Measurement measurement;
+    SignalBridge signals;
+    FILE *output;
+    CFRunLoopTimerRef duration_timer;
+    bool stopping;
+} App;
+
+static CGEventRef app_event_handler(
+    void *context,
+    CGEventTapProxy proxy,
+    CGEventType type,
+    CGEventRef event
+) {
+    App *app = (App *)context;
+    if (app->options.mode == APP_MODE_MEASURE) {
+        measurement_handle(&app->measurement, type, event);
+        return event;
+    }
+    return debounce_filter_handle(&app->filter, proxy, type, event);
+}
+
+static void app_tap_reset(void *context) {
+    App *app = (App *)context;
+    if (app->options.mode == APP_MODE_FILTER) {
+        debounce_filter_reset_safely(&app->filter);
+    }
+}
+
+static void app_stop(App *app) {
+    if (app->stopping) return;
+    app->stopping = true;
+
+    if (app->options.mode == APP_MODE_FILTER) {
+        debounce_filter_flush(&app->filter);
+    } else {
+        measurement_print_summary(&app->measurement);
+    }
+
+    CFRunLoopStop(CFRunLoopGetCurrent());
+}
+
+static void signal_stop(void *context) {
+    app_stop((App *)context);
+}
+
+static void duration_timer_callback(CFRunLoopTimerRef timer, void *info) {
+    (void)timer;
+    app_stop((App *)info);
+}
+
+static bool setup_duration_timer(App *app) {
+    if (app->options.duration_seconds <= 0.0) return true;
+
+    CFRunLoopTimerContext ctx = {0};
+    ctx.info = app;
+    app->duration_timer = CFRunLoopTimerCreate(
+        kCFAllocatorDefault,
+        CFAbsoluteTimeGetCurrent() + app->options.duration_seconds,
+        0.0,
+        0,
+        0,
+        duration_timer_callback,
+        &ctx
+    );
+    if (app->duration_timer == NULL) return false;
+    CFRunLoopAddTimer(CFRunLoopGetCurrent(), app->duration_timer, kCFRunLoopCommonModes);
+    return true;
+}
+
+static void cleanup(App *app) {
+    if (app->duration_timer != NULL) {
+        CFRunLoopTimerInvalidate(app->duration_timer);
+        CFRelease(app->duration_timer);
+        app->duration_timer = NULL;
+    }
+
+    event_tap_stop(&app->event_tap);
+    signal_bridge_stop(&app->signals);
+
+    if (app->options.mode == APP_MODE_FILTER) {
+        debounce_filter_destroy(&app->filter);
+    }
+
+    if (app->output != NULL && app->output != stdout) {
+        fclose(app->output);
+        app->output = NULL;
+    }
+}
+
+int main(int argc, char **argv) {
+    App app;
+    memset(&app, 0, sizeof(app));
+    app.signals.pipe_fd[0] = -1;
+    app.signals.pipe_fd[1] = -1;
+    app.output = stdout;
+
+    if (!options_parse(argc, argv, &app.options)) {
+        options_print_usage(argv[0]);
+        return 2;
+    }
+
+    if (app.options.output_path != NULL) {
+        app.output = fopen(app.options.output_path, "w");
+        if (app.output == NULL) {
+            perror("Could not open measurement output");
+            return 1;
+        }
+        setvbuf(app.output, NULL, _IOLBF, 0);
+    } else {
+        setvbuf(stdout, NULL, _IOLBF, 0);
+    }
+
+    PermissionStatus permissions = permissions_request(app.options.mode == APP_MODE_FILTER);
+    if (!permissions.listen_allowed || !permissions.post_allowed) {
+        fprintf(app.output,
+            "macOS has not granted the required event permission yet.\n"
+            "Grant Mouse Debounce in Privacy & Security, then relaunch it.\n");
+        cleanup(&app);
+        return 1;
+    }
+
+    CGEventMask mask = mouse_button_event_mask();
+    if (app.options.mode == APP_MODE_MEASURE) mask |= CGEventMaskBit(kCGEventScrollWheel);
+
+    if (app.options.mode == APP_MODE_FILTER) {
+        debounce_filter_init(
+            &app.filter,
+            app.options.buttons,
+            app.options.short_ms,
+            app.options.hold_ms
+        );
+    } else {
+        measurement_init(&app.measurement, app.options.buttons, app.output);
+    }
+
+    if (!event_tap_start(
+            &app.event_tap,
+            app.options.mode == APP_MODE_MEASURE,
+            mask,
+            app_event_handler,
+            app_tap_reset,
+            &app)) {
+        fprintf(app.output,
+            "Could not create CGEventTap. Check Privacy & Security permissions.\n");
+        cleanup(&app);
+        return 1;
+    }
+
+    if (!signal_bridge_start(&app.signals, signal_stop, &app)) {
+        fprintf(app.output,
+            "Warning: SIGINT/SIGTERM cleanup bridge unavailable; continuing.\n");
+    }
+
+    if (!setup_duration_timer(&app)) {
+        fprintf(app.output, "Could not create duration timer.\n");
+        cleanup(&app);
+        return 1;
+    }
+
+    if (app.options.mode == APP_MODE_MEASURE) {
+        fprintf(app.output,
+            "Measuring left/right/middle button timing and wheel events; nothing is modified.\n");
+    } else {
+        fprintf(app.output,
+            "Mouse Debounce active: left,right,middle; short-ms=%.1f hold-ms=%.1f\n",
+            app.options.short_ms, app.options.hold_ms);
+    }
+
+    CFRunLoopRun();
+    cleanup(&app);
+    return 0;
+}
