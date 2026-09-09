@@ -31,10 +31,15 @@ static bool parse_nonnegative_double(const char *text, double *out) {
     return true;
 }
 
+static bool parse_unit_double(const char *text, double *out) {
+    if (!parse_nonnegative_double(text, out)) return false;
+    return *out <= 1.0;
+}
+
 void options_print_usage(const char *argv0) {
     fprintf(stderr,
         "Usage:\n"
-        "  %s [--filter] [timing options] [--buttons LIST]\n"
+        "  %s [--filter] [timing options] [--buttons LIST] [--sound-volume N]\n"
         "  %s --measure [--buttons LIST] [--output PATH] [--duration SEC]\n"
         "\n"
         "Timing options:\n"
@@ -42,6 +47,9 @@ void options_print_usage(const char *argv0) {
         "  --left-short-ms N / --left-hold-ms N\n"
         "  --right-short-ms N / --right-hold-ms N\n"
         "  --middle-short-ms N / --middle-hold-ms N\n"
+        "\n"
+        "Sound:\n"
+        "  --sound-volume N   debug tick volume, 0..1 (default 0.1)\n"
         "\n"
         "Unset per-button values inherit the average of explicitly set siblings;\n"
         "if no sibling is set, the default is %.0f/%.0f ms. Later arguments win.\n"
@@ -96,10 +104,8 @@ static bool parse_sequence(
             if (i + 1 >= argc || !parse_button_timing(arg, argv[++i], &options->timing_draft)) return false;
         } else if (strcmp(arg, "--buttons") == 0) {
             if (i + 1 >= argc || !mouse_parse_button_list(argv[++i], options->buttons)) return false;
-        } else if (config_mode && strcmp(arg, "--sound-volume") == 0) {
-            if (i + 1 >= argc) return false;
-            fprintf(stderr, "Warning: ignoring unsupported config option %s %s\n", arg, argv[i + 1]);
-            ++i;
+        } else if (strcmp(arg, "--sound-volume") == 0) {
+            if (i + 1 >= argc || !parse_unit_double(argv[++i], &options->sound_volume)) return false;
         } else if (config_mode) {
             return false;
         } else if (strcmp(arg, "--filter") == 0) {
@@ -118,9 +124,8 @@ static bool parse_sequence(
             options->pid_file = argv[++i];
         } else if (strcmp(arg, "--config") == 0) {
             if (i + 1 >= argc) return false;
-            ++i; /* path was handled during pre-scan */
+            ++i;
         } else if (strcmp(arg, "--no-config") == 0) {
-            /* handled during pre-scan */
         } else if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0) {
             options_print_usage("MouseDebounce");
             exit(0);
@@ -153,6 +158,7 @@ bool options_parse(int argc, char **argv, AppOptions *options) {
     memset(options, 0, sizeof(*options));
     options->mode = APP_MODE_FILTER;
     options->duration_seconds = 0.0;
+    options->sound_volume = 0.1;
     for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) options->buttons[i] = true;
     timing_draft_init(&options->timing_draft);
 

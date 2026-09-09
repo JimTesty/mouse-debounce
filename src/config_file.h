@@ -21,7 +21,8 @@ bool config_load_tokens(const char *path, ConfigTokens *tokens);
 bool config_write_settings(
     const char *path,
     const TimingSettings *timing,
-    const bool buttons[MOUSE_BUTTON_COUNT]
+    const bool buttons[MOUSE_BUTTON_COUNT],
+    double sound_volume
 );
 
 #endif

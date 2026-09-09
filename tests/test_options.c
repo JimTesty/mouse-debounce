@@ -56,7 +56,7 @@ static void precedence_and_roundtrip(void) {
     assert(options.timing.hold_ms[1] == 30);
     assert(options.timing.hold_ms[2] == 30);
     options.buttons[MOUSE_BUTTON_RIGHT] = false;
-    assert(config_write_settings(path, &options.timing, options.buttons));
+    assert(config_write_settings(path, &options.timing, options.buttons, options.sound_volume));
     AppOptions loaded;
     char *load_args[] = {"test", "--config", path};
     assert(options_parse(3, load_args, &loaded));

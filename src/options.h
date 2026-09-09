@@ -17,6 +17,7 @@ typedef struct {
     TimingDraft timing_draft;
     TimingSettings timing;
     bool buttons[MOUSE_BUTTON_COUNT];
+    double sound_volume;
     const char *output_path;
     double duration_seconds;
     bool use_config;

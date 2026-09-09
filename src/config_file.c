@@ -86,7 +86,8 @@ static bool all_equal(const double v[MOUSE_BUTTON_COUNT]) {
 bool config_write_settings(
     const char *path,
     const TimingSettings *timing,
-    const bool buttons[MOUSE_BUTTON_COUNT]
+    const bool buttons[MOUSE_BUTTON_COUNT],
+    double sound_volume
 ) {
     if (!ensure_config_directory(path)) return false;
     FILE *f = fopen(path, "w");
@@ -95,6 +96,7 @@ bool config_write_settings(
 
     fprintf(f, "# MouseDebounce filter settings. CLI arguments override these.\n");
     write_buttons(f, buttons);
+    fprintf(f, "--sound-volume %.3g\n", sound_volume);
 
     if (all_equal(timing->short_ms)) {
         fprintf(f, "--short-ms %.3g\n", timing->short_ms[0]);

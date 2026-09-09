@@ -1,6 +1,7 @@
 CC ?= clang
 CFLAGS ?= -O2 -Wall -Wextra -Wpedantic -std=c11
 DEPFLAGS := -MMD -MP
+OBJCFLAGS ?= -O2 -Wall -Wextra -Wpedantic
 MACOSX_DEPLOYMENT_TARGET ?= 10.15
 SIGN_IDENTITY ?= -
 export MACOSX_DEPLOYMENT_TARGET
@@ -29,9 +30,10 @@ SOURCES := \
 	src/event_tap.c \
 	src/permissions.c \
 	src/signal_bridge.c
-OBJECTS := $(patsubst src/%.c,$(OBJ)/%.o,$(SOURCES))
+OBJC_SOURCES := src/debounce_sound.m
+OBJECTS := $(patsubst src/%.c,$(OBJ)/%.o,$(SOURCES)) $(patsubst src/%.m,$(OBJ)/%.o,$(OBJC_SOURCES))
 DEPS := $(OBJECTS:.o=.d)
-FRAMEWORKS := -framework ApplicationServices -framework CoreFoundation
+FRAMEWORKS := -framework ApplicationServices -framework CoreFoundation -framework AVFoundation
 
 .PHONY: all app test clean run install-user
 
@@ -48,6 +50,10 @@ $(BINARY): $(OBJECTS) resources/Info.plist
 $(OBJ)/%.o: src/%.c
 	mkdir -p "$(OBJ)"
 	$(CC) $(CFLAGS) $(DEPFLAGS) -Isrc -c $< -o $@
+
+$(OBJ)/%.o: src/%.m
+	mkdir -p "$(OBJ)"
+	$(CC) $(OBJCFLAGS) $(DEPFLAGS) -Isrc -c $< -o $@
 
 test: $(BUILD)/test-debounce-logic $(BUILD)/test-timing-settings $(BUILD)/test-statistics $(BUILD)/test-wheel-analysis $(BUILD)/test-options
 	$(BUILD)/test-debounce-logic

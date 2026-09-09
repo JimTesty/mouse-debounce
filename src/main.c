@@ -1,5 +1,6 @@
 #include "config_file.h"
 #include "debounce_filter.h"
+#include "debounce_sound.h"
 #include "event_tap.h"
 #include "measurement.h"
 #include "mouse_events.h"
@@ -40,6 +41,12 @@ static CGEventRef app_event_handler(
         measurement_handle(&app->measurement, type, event);
         return event;
     }
+    if (type == kCGEventScrollWheel) {
+        if (CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis1) < 0) {
+            debounce_sound_play();
+        }
+        return event;
+    }
     return debounce_filter_handle(&app->filter, proxy, type, event);
 }
 
@@ -67,8 +74,6 @@ static void app_stop_for_permission_loss(App *app) {
     if (app->stopping) return;
     app->stopping = true;
     app->permission_lost = true;
-
-    /* Stop intercepting input before doing any other cleanup. */
     event_tap_stop(&app->event_tap);
     fprintf(app->output, "Accessibility permission was revoked; exiting immediately.\n");
     CFRunLoopStop(CFRunLoopGetCurrent());
@@ -197,7 +202,8 @@ int main(int argc, char **argv) {
         if (!config_write_settings(
                 app.options.config_path,
                 &app.options.timing,
-                app.options.buttons)) {
+                app.options.buttons,
+                app.options.sound_volume)) {
             fprintf(app.output, "Could not save config: %s\n", app.options.config_path);
             cleanup(&app);
             return 1;
@@ -222,10 +228,10 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    CGEventMask mask = mouse_button_event_mask();
-    if (app.options.mode == APP_MODE_MEASURE) mask |= CGEventMaskBit(kCGEventScrollWheel);
+    CGEventMask mask = mouse_button_event_mask() | CGEventMaskBit(kCGEventScrollWheel);
 
     if (app.options.mode == APP_MODE_FILTER) {
+        debounce_sound_set_volume(app.options.sound_volume);
         debounce_filter_init(
             &app.filter,
             app.options.buttons,
@@ -276,6 +282,7 @@ int main(int argc, char **argv) {
                 app.options.timing.short_ms[button],
                 app.options.timing.hold_ms[button]);
         }
+        fprintf(app.output, "  sound-volume=%.2f\n", app.options.sound_volume);
         if (app.options.use_config) {
             fprintf(app.output, "Config: %s\n", app.options.config_path);
         }
