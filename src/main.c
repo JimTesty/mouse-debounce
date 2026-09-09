@@ -1,3 +1,4 @@
+#include "config_file.h"
 #include "debounce_filter.h"
 #include "event_tap.h"
 #include "measurement.h"
@@ -129,6 +130,18 @@ int main(int argc, char **argv) {
         setvbuf(stdout, NULL, _IOLBF, 0);
     }
 
+    if (app.options.save_config) {
+        if (!config_write_settings(
+                app.options.config_path,
+                &app.options.timing,
+                app.options.buttons)) {
+            fprintf(app.output, "Could not save config: %s\n", app.options.config_path);
+            cleanup(&app);
+            return 1;
+        }
+        fprintf(app.output, "Saved config: %s\n", app.options.config_path);
+    }
+
     PermissionStatus permissions = permissions_request(app.options.mode == APP_MODE_FILTER);
     if (!permissions.listen_allowed || !permissions.post_allowed) {
         fprintf(app.output,
@@ -145,8 +158,8 @@ int main(int argc, char **argv) {
         debounce_filter_init(
             &app.filter,
             app.options.buttons,
-            app.options.short_ms,
-            app.options.hold_ms
+            app.options.timing.short_ms,
+            app.options.timing.hold_ms
         );
     } else {
         measurement_init(&app.measurement, app.options.buttons, app.output);
@@ -180,9 +193,17 @@ int main(int argc, char **argv) {
         fprintf(app.output,
             "Measuring left/right/middle button timing and wheel events; nothing is modified.\n");
     } else {
-        fprintf(app.output,
-            "Mouse Debounce active: left,right,middle; short-ms=%.1f hold-ms=%.1f\n",
-            app.options.short_ms, app.options.hold_ms);
+        fprintf(app.output, "Mouse Debounce active:\n");
+        for (int button = 0; button < MOUSE_BUTTON_COUNT; ++button) {
+            if (!app.options.buttons[button]) continue;
+            fprintf(app.output, "  %-6s short-ms=%.1f hold-ms=%.1f\n",
+                mouse_button_name((MouseButton)button),
+                app.options.timing.short_ms[button],
+                app.options.timing.hold_ms[button]);
+        }
+        if (app.options.use_config) {
+            fprintf(app.output, "Config: %s\n", app.options.config_path);
+        }
     }
 
     CFRunLoopRun();

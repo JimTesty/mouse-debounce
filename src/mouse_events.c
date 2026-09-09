@@ -3,15 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-const char *mouse_button_name(MouseButton button) {
-    switch (button) {
-        case MOUSE_BUTTON_LEFT: return "LEFT";
-        case MOUSE_BUTTON_RIGHT: return "RIGHT";
-        case MOUSE_BUTTON_MIDDLE: return "MIDDLE";
-        default: return "?";
-    }
-}
-
 bool mouse_button_from_event(CGEventType type, CGEventRef event, MouseButtonEvent *out) {
     out->is_down = false;
     out->is_up = false;

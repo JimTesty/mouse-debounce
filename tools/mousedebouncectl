@@ -1,0 +1,127 @@
+#!/bin/sh
+set -eu
+
+LABEL="io.mouse-debounce.MouseDebounce"
+DOMAIN="gui/$(id -u)"
+SERVICE="$DOMAIN/$LABEL"
+APP="$HOME/Applications/MouseDebounce.app"
+BIN="$APP/Contents/MacOS/MouseDebounce"
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+LOG="$HOME/Library/Logs/MouseDebounce.log"
+ERRLOG="$HOME/Library/Logs/MouseDebounce.err.log"
+SOURCE_APP="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)/build/MouseDebounce.app"
+
+usage() {
+    cat <<USAGE
+Usage: $0 COMMAND
+
+Commands:
+  install    copy the app to ~/Applications and register the LaunchAgent
+  grant      launch the app for 1 second via LaunchServices to request TCC access
+  start      start the registered service
+  stop       stop it cleanly with SIGTERM
+  restart    restart it
+  status     show launchd state/PID/last exit status
+  logs       tail stdout/stderr logs
+  uninstall  unregister service and remove installed app/plist (keeps config)
+USAGE
+}
+
+loaded() {
+    launchctl print "$SERVICE" >/dev/null 2>&1
+}
+
+install_service() {
+    if [ ! -d "$SOURCE_APP" ]; then
+        echo "Missing $SOURCE_APP; run 'make app' first." >&2
+        exit 1
+    fi
+    mkdir -p "$HOME/Applications" "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
+    if loaded; then
+        launchctl bootout "$SERVICE" >/dev/null 2>&1 || true
+    fi
+    rm -rf "$APP"
+    cp -R "$SOURCE_APP" "$APP"
+
+    cat > "$PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>$LABEL</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>$BIN</string>
+    </array>
+    <key>AssociatedBundleIdentifiers</key>
+    <array>
+        <string>$LABEL</string>
+    </array>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>ProcessType</key>
+    <string>Interactive</string>
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
+    <key>StandardOutPath</key>
+    <string>$LOG</string>
+    <key>StandardErrorPath</key>
+    <string>$ERRLOG</string>
+</dict>
+</plist>
+PLIST
+    launchctl bootstrap "$DOMAIN" "$PLIST"
+    echo "Installed and registered. Next: $0 grant ; $0 start"
+}
+
+status_service() {
+    if ! loaded; then
+        echo "MouseDebounce: not registered with launchd"
+        exit 1
+    fi
+    launchctl print "$SERVICE" | awk '
+        /^[[:space:]]*state =/ || /^[[:space:]]*pid =/ || /^[[:space:]]*last exit code =/ {print}
+    '
+}
+
+case "${1:-}" in
+    install)
+        install_service
+        ;;
+    grant)
+        if [ ! -d "$APP" ]; then
+            echo "Not installed; run '$0 install' first." >&2
+            exit 1
+        fi
+        open -n "$APP" --args --duration 1
+        echo "Launched briefly via LaunchServices. Respond to macOS privacy prompts, then use '$0 start'."
+        ;;
+    start)
+        launchctl kickstart "$SERVICE"
+        ;;
+    stop)
+        if loaded; then launchctl kill SIGTERM "$SERVICE" 2>/dev/null || true; fi
+        ;;
+    restart)
+        launchctl kickstart -k "$SERVICE"
+        ;;
+    status)
+        status_service
+        ;;
+    logs)
+        mkdir -p "$HOME/Library/Logs"
+        touch "$LOG" "$ERRLOG"
+        tail -f "$LOG" "$ERRLOG"
+        ;;
+    uninstall)
+        if loaded; then launchctl bootout "$SERVICE" >/dev/null 2>&1 || true; fi
+        rm -f "$PLIST"
+        rm -rf "$APP"
+        echo "Removed app and LaunchAgent. Config was intentionally kept."
+        ;;
+    *)
+        usage
+        exit 2
+        ;;
+esac

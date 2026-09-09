@@ -86,7 +86,7 @@ static bool schedule_timer(DebounceFilter *filter, MouseButton button) {
 
     CFRunLoopTimerContext context = {0};
     context.info = &g_timer_contexts[button];
-    CFAbsoluteTime fire = CFAbsoluteTimeGetCurrent() + (double)filter->hold_ns / 1e9;
+    CFAbsoluteTime fire = CFAbsoluteTimeGetCurrent() + (double)filter->hold_ns[button] / 1e9;
     runtime->pending_timer = CFRunLoopTimerCreate(
         kCFAllocatorDefault, fire, 0.0, 0, 0, timer_callback, &context
     );
@@ -99,14 +99,14 @@ static bool schedule_timer(DebounceFilter *filter, MouseButton button) {
 void debounce_filter_init(
     DebounceFilter *filter,
     const bool enabled[MOUSE_BUTTON_COUNT],
-    double short_ms,
-    double hold_ms
+    const double short_ms[MOUSE_BUTTON_COUNT],
+    const double hold_ms[MOUSE_BUTTON_COUNT]
 ) {
     memset(filter, 0, sizeof(*filter));
-    filter->short_ns = ms_to_ns(short_ms);
-    filter->hold_ns = ms_to_ns(hold_ms);
     for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) {
         filter->enabled[i] = enabled[i];
+        filter->short_ns[i] = ms_to_ns(short_ms[i]);
+        filter->hold_ns[i] = ms_to_ns(hold_ms[i]);
         debounce_state_init(&filter->button[i].logic);
     }
 }
@@ -148,7 +148,7 @@ CGEventRef debounce_filter_handle(
     }
 
     DebounceAction action = debounce_on_up(
-        &runtime->logic, now_ns, filter->short_ns, filter->hold_ns
+        &runtime->logic, now_ns, filter->short_ns[mouse.button], filter->hold_ns[mouse.button]
     );
     if (action != DEBOUNCE_HOLD_UP) return event;
 

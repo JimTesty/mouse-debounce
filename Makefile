@@ -13,7 +13,11 @@ MACOS := $(APP)/Contents/MacOS
 SOURCES := \
 	src/main.c \
 	src/options.c \
+	src/config_file.c \
+	src/mouse_button.c \
 	src/mouse_events.c \
+	src/timing_settings.c \
+	src/statistics.c \
 	src/debounce_logic.c \
 	src/debounce_filter.c \
 	src/measurement.c \
@@ -23,7 +27,7 @@ SOURCES := \
 OBJECTS := $(patsubst src/%.c,$(OBJ)/%.o,$(SOURCES))
 FRAMEWORKS := -framework ApplicationServices -framework CoreFoundation
 
-.PHONY: all app test clean run
+.PHONY: all app test clean run install-user
 
 all: app test
 
@@ -39,15 +43,28 @@ $(OBJ)/%.o: src/%.c
 	mkdir -p "$(OBJ)"
 	$(CC) $(CFLAGS) -Isrc -c $< -o $@
 
-test: $(BUILD)/test-debounce-logic
+test: $(BUILD)/test-debounce-logic $(BUILD)/test-timing-settings $(BUILD)/test-statistics
 	$(BUILD)/test-debounce-logic
+	$(BUILD)/test-timing-settings
+	$(BUILD)/test-statistics
 
 $(BUILD)/test-debounce-logic: tests/test_debounce_logic.c src/debounce_logic.c src/debounce_logic.h
 	mkdir -p "$(BUILD)"
 	$(CC) $(CFLAGS) -Isrc tests/test_debounce_logic.c src/debounce_logic.c -o $@
 
+$(BUILD)/test-timing-settings: tests/test_timing_settings.c src/timing_settings.c src/timing_settings.h src/mouse_button.h
+	mkdir -p "$(BUILD)"
+	$(CC) $(CFLAGS) -Isrc tests/test_timing_settings.c src/timing_settings.c -o $@
+
+$(BUILD)/test-statistics: tests/test_statistics.c src/statistics.c src/statistics.h
+	mkdir -p "$(BUILD)"
+	$(CC) $(CFLAGS) -Isrc tests/test_statistics.c src/statistics.c -o $@
+
 run: app
 	open -n "$(APP)"
+
+install-user: app
+	tools/mousedebouncectl install
 
 clean:
 	rm -rf "$(BUILD)"

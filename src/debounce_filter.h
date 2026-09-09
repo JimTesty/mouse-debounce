@@ -17,16 +17,16 @@ typedef struct {
 
 typedef struct {
     bool enabled[MOUSE_BUTTON_COUNT];
-    uint64_t short_ns;
-    uint64_t hold_ns;
+    uint64_t short_ns[MOUSE_BUTTON_COUNT];
+    uint64_t hold_ns[MOUSE_BUTTON_COUNT];
     DebounceButtonRuntime button[MOUSE_BUTTON_COUNT];
 } DebounceFilter;
 
 void debounce_filter_init(
     DebounceFilter *filter,
     const bool enabled[MOUSE_BUTTON_COUNT],
-    double short_ms,
-    double hold_ms
+    const double short_ms[MOUSE_BUTTON_COUNT],
+    const double hold_ms[MOUSE_BUTTON_COUNT]
 );
 CGEventRef debounce_filter_handle(
     DebounceFilter *filter,

@@ -1,33 +1,16 @@
 # Mouse Debounce for macOS
 
-A small, source-auditable macOS mouse-switch repair utility.
+A small, source-auditable macOS utility for repairing worn mouse-button chatter in software.
 
-It combines:
+Version **0.3.0** combines:
 
-- the two-threshold state-machine idea from `franzos/mouse-debounce`, and
-- the useful macOS plumbing pattern from Vorssaint: a HID-level `CGEventTap`,
-  safe tap reset/re-enable, and fail-open handling.
+- the two-threshold state-machine idea from `franzos/mouse-debounce`;
+- the useful macOS `CGEventTap` plumbing pattern from Vorssaint;
+- per-button timing, measurement statistics/recommendations, persistent config, and optional launchd lifecycle control.
 
-Version 0.2 is deliberately modular. The debounce policy is isolated from the
-macOS event plumbing and has platform-independent unit tests.
+The filter handles **left, right, and middle buttons by default**. Wheel events are measured but never modified.
 
-## Source map
-
-| File | Purpose |
-|---|---|
-| `src/debounce_logic.*` | Pure debounce state machine; no macOS APIs |
-| `src/debounce_filter.*` | CoreGraphics adapter, withheld-Up storage and timers |
-| `src/mouse_events.*` | Left/right/middle event decoding |
-| `src/measurement.*` | Button + wheel timing measurement |
-| `src/event_tap.*` | Minimal `CGEventTap` lifecycle wrapper |
-| `src/permissions.*` | Requests ListenEvent/PostEvent privacy access |
-| `src/signal_bridge.*` | Safe SIGINT/SIGTERM -> run-loop shutdown |
-| `src/options.*` | CLI parsing/defaults |
-| `src/main.c` | Wiring only |
-
-## Defaults
-
-Filtering is the default mode, and **left, right, and middle are all enabled by default**:
+## Debounce algorithm
 
 ```text
 Down -> pass immediately
@@ -36,160 +19,253 @@ returning Down before hold timeout -> discard {Up, Down} as a bounce pair
 otherwise -> release the withheld Up
 ```
 
-Defaults are currently:
+Normal Down latency is unchanged. Only an Up that already looks suspicious is delayed.
 
-- `--short-ms 80`
-- `--hold-ms 70`
-- `--buttons left,right,middle`
+Defaults are now:
 
-Measure your own mouse before trusting those thresholds.
+```text
+short-ms = 20
+hold-ms  = 20
+buttons  = left,right,middle
+```
 
-## Why an `.app` bundle?
+## Per-button timing and inheritance
 
-macOS privacy/TCC decisions are associated with *responsible code*. A bare
-command-line binary launched by Terminal may therefore cause **Terminal** to be
-shown in Input Monitoring / Accessibility.
+Every button can have separate thresholds:
 
-`make` instead creates:
+```text
+--left-short-ms 18
+--left-hold-ms 16
+--right-short-ms 20
+--right-hold-ms 22
+--middle-short-ms 25
+--middle-hold-ms 20
+```
+
+Global options still work:
+
+```text
+--short-ms 20 --hold-ms 20
+```
+
+A global option sets all three buttons. Later arguments win, so this is useful:
+
+```text
+--short-ms 20 --hold-ms 20 --middle-short-ms 30
+```
+
+If no global value was assigned and a button-specific value is missing, it inherits from explicitly set siblings:
+
+```text
+--left-short-ms 10 --right-short-ms 30
+```
+
+resolves to:
+
+```text
+left=10, right=30, middle=20
+```
+
+If only one sibling is set, the unset buttons copy it. If no button is set, the built-in fallback is 20 ms.
+
+## Persistent config
+
+The default config path is:
+
+```text
+~/Library/Application Support/MouseDebounce/config.args
+```
+
+This was chosen instead of `build/config.*` because rebuilds should never erase settings, and instead of writing a raw plist into `~/Library/Preferences` because a tiny human-readable argument file is easier to audit and edit.
+
+Example:
+
+```text
+# MouseDebounce filter settings
+--buttons left,right,middle
+--short-ms 20
+--hold-ms 20
+--middle-short-ms 25
+```
+
+Syntax is intentionally simple: whitespace-separated arguments and `#` comments. Quoted arguments are not implemented because filter settings do not need them.
+
+The config loads first; command-line arguments load afterward and therefore override it.
+
+Useful options:
+
+```text
+--no-config
+--config /some/other/config.args
+--save-config
+```
+
+For example:
+
+```sh
+open -n build/MouseDebounce.app --args \
+  --short-ms 20 --hold-ms 20 --middle-short-ms 25 --save-config
+```
+
+`--save-config` writes a canonical resolved config and then continues running.
+
+## Measurement mode
+
+Measurement records:
+
+- Down -> Up press durations for left/right/middle;
+- Up -> next Down gaps for each button;
+- scroll-wheel timing/delta/direction data.
+
+Example:
+
+```sh
+rm -f /tmp/mouse-debounce-measure.txt
+open -n build/MouseDebounce.app --args \
+  --measure --duration 60 --output /tmp/mouse-debounce-measure.txt
+
+tail -f /tmp/mouse-debounce-measure.txt
+```
+
+At the end it prints basic statistics for each button and metric:
+
+```text
+n
+IQR outliers removed
+mean
+median
+90th percentile
+range
+```
+
+For threshold recommendation it examines timings up to 250 ms, searches for a clearly separated low-timing cluster, removes Tukey-IQR outliers *within that cluster*, and puts the suggested threshold halfway between the cleaned low cluster and the next cluster.
+
+Conceptually:
+
+```text
+bounce-ish timings     normal-ish timings
+5  7  8  10             55  60  75  90
+         ^                ^
+       max low          min high
+             \          /
+           suggestion ~33 ms
+```
+
+This is a heuristic, not an oracle. Two genuine very-fast clicks can have the same waveform as switch chatter. If no convincing split exists, the tool refuses to invent a direct recommendation for that button; it instead uses the average of measured siblings, or 20 ms if none are available.
+
+Include soft clicks, deliberate double-clicks, and drag-selects during measurement so the distributions contain the cases you care about.
+
+## Wheel misses
+
+A completely missing wheel detent cannot be reconstructed reliably:
+
+```text
+physical detent -> no observable event
+```
+
+Software cannot distinguish that from intentionally stopping the wheel. The measurement trace can still diagnose more recoverable faults such as isolated reverse-direction ticks or erratic deltas. Version 0.3 therefore does not synthesize wheel movement.
+
+## App bundle and macOS privacy identity
+
+`make app` creates:
 
 ```text
 build/MouseDebounce.app
 ```
 
-with a stable bundle identifier and an ad-hoc code signature. Launch the app via
-Finder or `open` so macOS has a real app identity to associate with the privacy
-request:
+The bundle is headless (`LSUIElement=true`) but gives macOS a proper bundle identity for Input Monitoring / event-access privacy decisions. It explicitly requests CoreGraphics listen/post event access.
+
+The local build is ad-hoc signed. A stable Apple development signature is preferable if repeated rebuilds cause TCC to ask again.
+
+## launchd lifecycle control
+
+A native user LaunchAgent is cleaner than hunting PIDs with `ps` and `kill`.
+
+Build and install:
 
 ```sh
-make
-open -n "build/MouseDebounce.app"
+make app
+tools/mousedebouncectl install
 ```
 
-The application is `LSUIElement`, so it has no Dock icon and no GUI baggage.
-Launching it with no arguments starts filtering.
-
-The code calls CoreGraphics' ListenEvent and PostEvent preflight/request APIs.
-Depending on macOS version and existing TCC state, System Settings may use the
-labels **Input Monitoring** and/or **Accessibility**.
-
-An app bundle is the correct structure, but recent macOS versions have had some
-quirks around when an app appears in the Input Monitoring list. Packaging cannot
-force TCC to list an app if the OS itself declines to register the request.
-
-### Code signing
-
-The Makefile uses an **ad-hoc signature** (`codesign -s -`) for a locally built
-copy. If you later want a stable distributable build, sign it with your own Apple
-Developer certificate instead. TCC may ask again when code identity changes.
-
-## Measure mode
-
-Measurement is listen-only and includes:
-
-- left button Down/Up timing,
-- right button Down/Up timing,
-- middle button Down/Up timing,
-- scroll-wheel deltas/direction/timing.
-
-If launched directly from a shell:
+Trigger the privacy request once through LaunchServices:
 
 ```sh
-"build/MouseDebounce.app/Contents/MacOS/MouseDebounce" --measure
+tools/mousedebouncectl grant
 ```
 
-For the strongest chance that TCC attributes the request to **Mouse Debounce**
-rather than Terminal, launch it through LaunchServices and explicitly write the
-measurement to a chosen file:
+Then:
 
 ```sh
-rm -f /tmp/mouse-debounce-measure.txt
-open -n "build/MouseDebounce.app" --args \
-  --measure --duration 30 --output /tmp/mouse-debounce-measure.txt
-
-tail -f /tmp/mouse-debounce-measure.txt
+tools/mousedebouncectl start
+tools/mousedebouncectl status
+tools/mousedebouncectl stop
+tools/mousedebouncectl restart
+tools/mousedebouncectl logs
+tools/mousedebouncectl uninstall
 ```
 
-After 30 seconds the app exits and writes the summary. Change `--duration` as
-needed. `--output` is the only intentional ordinary-file write in the program.
+The generated LaunchAgent includes `AssociatedBundleIdentifiers=io.mouse-debounce.MouseDebounce` so macOS has an explicit association between the LaunchAgent and the app bundle.
 
-## Wheel misses
+The service reads the normal config file, so changing thresholds does not require rewriting the LaunchAgent.
 
-A true missed wheel detent is fundamentally different from switch bounce:
+`uninstall` intentionally leaves the config file behind.
 
-```text
-physical detent happened -> OS received no event
-```
+## Source map
 
-There is no observation from which software can reliably infer that missing
-movement. Inventing a tick based on timing would produce false scrolls whenever
-you intentionally pause.
-
-This version therefore **measures but does not modify wheel events**. The trace
-can still diagnose a more repairable failure mode: an isolated wrong-direction
-pulse inside a run of same-direction scrolling. That could later be an optional
-filter, but it should not be enabled blindly.
+| File | Purpose |
+|---|---|
+| `src/debounce_logic.*` | Pure debounce state machine |
+| `src/timing_settings.*` | Per-button timing + sibling inheritance |
+| `src/statistics.*` | Portable IQR statistics and cluster-split heuristic |
+| `src/measurement.*` | Button/wheel measurement and recommendations |
+| `src/debounce_filter.*` | CoreGraphics adapter, timers, withheld-Up storage |
+| `src/mouse_button.*` | Platform-independent button names/types |
+| `src/mouse_events.*` | CoreGraphics mouse-event decoding |
+| `src/config_file.*` | Tiny config.args reader/writer |
+| `src/event_tap.*` | Minimal `CGEventTap` lifecycle |
+| `src/permissions.*` | Input event privacy requests |
+| `src/signal_bridge.*` | SIGINT/SIGTERM -> run-loop shutdown |
+| `src/options.*` | CLI/config parsing and precedence |
+| `src/main.c` | Wiring only |
+| `tools/mousedebouncectl` | launchd install/start/stop/status wrapper |
 
 ## Build and tests
 
-Requires Apple's command-line developer tools.
+Requires Apple's command-line developer tools on macOS:
 
 ```sh
 make
 ```
 
-`make` also runs platform-independent tests of `debounce_logic.c`.
+Portable unit tests cover:
 
-To run only the tests:
+- debounce state transitions;
+- timing inheritance/defaults;
+- IQR removal and threshold-cluster detection.
+
+Run only tests:
 
 ```sh
 make test
 ```
 
-## Useful commands
-
-Start filtering with defaults:
-
-```sh
-open -n "build/MouseDebounce.app"
-```
-
-Custom thresholds:
-
-```sh
-open -n "build/MouseDebounce.app" --args --filter --short-ms 60 --hold-ms 50
-```
-
-Only selected buttons:
-
-```sh
-open -n "build/MouseDebounce.app" --args --buttons left,right
-```
-
-Stop a headless instance:
-
-```sh
-killall MouseDebounce
-```
-
-SIGTERM is handled cleanly: any withheld mouse-Up is emitted before shutdown.
-A hard crash/SIGKILL during the short withheld-Up interval remains inherently
-unrecoverable without also delaying the original Down.
-
 ## Safety / audit surface
 
-The filtering path:
+The filtering process:
 
 - creates one CoreGraphics event tap;
 - observes/suppresses only left/right/middle Down/Up events;
 - posts only a previously withheld Up;
-- has no network access;
+- has no network code;
 - launches no subprocesses;
 - dynamically loads no plug-ins;
-- reads no user files;
-- writes no ordinary files unless `--output PATH` was explicitly supplied for measurement.
+- reads only its explicit tiny config file;
+- writes only an explicitly requested measurement output or config save.
 
-The source is GPL-3.0-or-later because it intentionally derives design ideas from
-GPL-3.0-or-later projects:
+The optional shell control script copies the app into `~/Applications`, writes/removes one user LaunchAgent plist, and calls Apple's `launchctl` / `open` commands.
+
+The source remains GPL-3.0-or-later because it intentionally derives design ideas from GPL-3.0-or-later projects:
 
 - https://github.com/franzos/mouse-debounce
 - https://github.com/vorssaint/vorssaint-utils

@@ -1,58 +1,163 @@
 #include "options.h"
 
+#include "mouse_events.h"
+
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#define DEFAULT_SHORT_MS 80.0
-#define DEFAULT_HOLD_MS 70.0
+static bool parse_positive_double(const char *text, double *out) {
+    errno = 0;
+    char *end = NULL;
+    double value = strtod(text, &end);
+    if (errno != 0 || end == text || *end != '\0' || value <= 0.0) return false;
+    *out = value;
+    return true;
+}
+
+static bool parse_nonnegative_double(const char *text, double *out) {
+    errno = 0;
+    char *end = NULL;
+    double value = strtod(text, &end);
+    if (errno != 0 || end == text || *end != '\0' || value < 0.0) return false;
+    *out = value;
+    return true;
+}
 
 void options_print_usage(const char *argv0) {
     fprintf(stderr,
         "Usage:\n"
-        "  %s [--filter] [--short-ms N] [--hold-ms N] [--buttons LIST]\n"
+        "  %s [--filter] [timing options] [--buttons LIST]\n"
         "  %s --measure [--buttons LIST] [--output PATH] [--duration SEC]\n"
         "\n"
-        "Defaults:\n"
-        "  mode: filter\n"
-        "  buttons: left,right,middle\n"
-        "  short-ms: %.0f\n"
-        "  hold-ms: %.0f\n"
+        "Timing options:\n"
+        "  --short-ms N / --hold-ms N             set all buttons\n"
+        "  --left-short-ms N / --left-hold-ms N\n"
+        "  --right-short-ms N / --right-hold-ms N\n"
+        "  --middle-short-ms N / --middle-hold-ms N\n"
         "\n"
-        "Measurement also records scroll-wheel events, but never modifies them.\n",
+        "Unset per-button values inherit the average of explicitly set siblings;\n"
+        "if no sibling is set, the default is %.0f/%.0f ms. Later arguments win.\n"
+        "\n"
+        "Config:\n"
+        "  --config PATH      use a different config.args file\n"
+        "  --no-config        ignore the default config file\n"
+        "  --save-config      save resolved filter settings, then continue\n"
+        "\n"
+        "Default config: ~/Library/Application Support/MouseDebounce/config.args\n"
+        "Default buttons: left,right,middle\n"
+        "Measurement records wheel events but never modifies them.\n",
         argv0, argv0, DEFAULT_SHORT_MS, DEFAULT_HOLD_MS);
 }
 
-bool options_parse(int argc, char **argv, AppOptions *options) {
-    options->mode = APP_MODE_FILTER;
-    options->short_ms = DEFAULT_SHORT_MS;
-    options->hold_ms = DEFAULT_HOLD_MS;
-    options->output_path = NULL;
-    options->duration_seconds = 0.0;
-    for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) options->buttons[i] = true;
+static bool parse_button_timing(
+    const char *name,
+    const char *value_text,
+    TimingDraft *draft
+) {
+    double value;
+    if (!parse_positive_double(value_text, &value)) return false;
 
-    for (int i = 1; i < argc; ++i) {
-        if (strcmp(argv[i], "--filter") == 0) {
+    if (strcmp(name, "--short-ms") == 0) timing_set_short_all(draft, value);
+    else if (strcmp(name, "--hold-ms") == 0) timing_set_hold_all(draft, value);
+    else if (strcmp(name, "--left-short-ms") == 0) timing_set_short_button(draft, MOUSE_BUTTON_LEFT, value);
+    else if (strcmp(name, "--right-short-ms") == 0) timing_set_short_button(draft, MOUSE_BUTTON_RIGHT, value);
+    else if (strcmp(name, "--middle-short-ms") == 0) timing_set_short_button(draft, MOUSE_BUTTON_MIDDLE, value);
+    else if (strcmp(name, "--left-hold-ms") == 0) timing_set_hold_button(draft, MOUSE_BUTTON_LEFT, value);
+    else if (strcmp(name, "--right-hold-ms") == 0) timing_set_hold_button(draft, MOUSE_BUTTON_RIGHT, value);
+    else if (strcmp(name, "--middle-hold-ms") == 0) timing_set_hold_button(draft, MOUSE_BUTTON_MIDDLE, value);
+    else return false;
+    return true;
+}
+
+static bool is_timing_option(const char *name) {
+    return strcmp(name, "--short-ms") == 0 || strcmp(name, "--hold-ms") == 0 ||
+        strcmp(name, "--left-short-ms") == 0 || strcmp(name, "--right-short-ms") == 0 ||
+        strcmp(name, "--middle-short-ms") == 0 || strcmp(name, "--left-hold-ms") == 0 ||
+        strcmp(name, "--right-hold-ms") == 0 || strcmp(name, "--middle-hold-ms") == 0;
+}
+
+static bool parse_sequence(
+    int argc,
+    char **argv,
+    AppOptions *options,
+    bool config_mode
+) {
+    for (int i = 0; i < argc; ++i) {
+        const char *arg = argv[i];
+        if (is_timing_option(arg)) {
+            if (i + 1 >= argc || !parse_button_timing(arg, argv[++i], &options->timing_draft)) return false;
+        } else if (strcmp(arg, "--buttons") == 0) {
+            if (i + 1 >= argc || !mouse_parse_button_list(argv[++i], options->buttons)) return false;
+        } else if (config_mode) {
+            return false;
+        } else if (strcmp(arg, "--filter") == 0) {
             options->mode = APP_MODE_FILTER;
-        } else if (strcmp(argv[i], "--measure") == 0) {
+        } else if (strcmp(arg, "--measure") == 0) {
             options->mode = APP_MODE_MEASURE;
-        } else if (strcmp(argv[i], "--short-ms") == 0 && i + 1 < argc) {
-            options->short_ms = strtod(argv[++i], NULL);
-        } else if (strcmp(argv[i], "--hold-ms") == 0 && i + 1 < argc) {
-            options->hold_ms = strtod(argv[++i], NULL);
-        } else if (strcmp(argv[i], "--buttons") == 0 && i + 1 < argc) {
-            if (!mouse_parse_button_list(argv[++i], options->buttons)) return false;
-        } else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
+        } else if (strcmp(arg, "--output") == 0) {
+            if (i + 1 >= argc) return false;
             options->output_path = argv[++i];
-        } else if (strcmp(argv[i], "--duration") == 0 && i + 1 < argc) {
-            options->duration_seconds = strtod(argv[++i], NULL);
-        } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-            options_print_usage(argv[0]);
+        } else if (strcmp(arg, "--duration") == 0) {
+            if (i + 1 >= argc || !parse_nonnegative_double(argv[++i], &options->duration_seconds)) return false;
+        } else if (strcmp(arg, "--save-config") == 0) {
+            options->save_config = true;
+        } else if (strcmp(arg, "--config") == 0) {
+            if (i + 1 >= argc) return false;
+            ++i; /* path was handled during pre-scan */
+        } else if (strcmp(arg, "--no-config") == 0) {
+            /* handled during pre-scan */
+        } else if (strcmp(arg, "--help") == 0 || strcmp(arg, "-h") == 0) {
+            options_print_usage("MouseDebounce");
             exit(0);
         } else {
             return false;
         }
     }
+    return true;
+}
 
-    return options->short_ms > 0.0 && options->hold_ms > 0.0 && options->duration_seconds >= 0.0;
+static bool pre_scan_config(int argc, char **argv, AppOptions *options) {
+    options->use_config = true;
+    if (!config_default_path(options->config_path)) return false;
+
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--no-config") == 0) {
+            options->use_config = false;
+        } else if (strcmp(argv[i], "--config") == 0) {
+            if (i + 1 >= argc) return false;
+            size_t len = strlen(argv[++i]);
+            if (len >= sizeof(options->config_path)) return false;
+            strcpy(options->config_path, argv[i]);
+            options->use_config = true;
+        }
+    }
+    return true;
+}
+
+bool options_parse(int argc, char **argv, AppOptions *options) {
+    memset(options, 0, sizeof(*options));
+    options->mode = APP_MODE_FILTER;
+    options->duration_seconds = 0.0;
+    for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) options->buttons[i] = true;
+    timing_draft_init(&options->timing_draft);
+
+    if (!pre_scan_config(argc, argv, options)) return false;
+
+    if (options->use_config) {
+        ConfigTokens config;
+        if (!config_load_tokens(options->config_path, &config)) {
+            fprintf(stderr, "Could not read config file: %s\n", options->config_path);
+            return false;
+        }
+        if (config.count > 0 && !parse_sequence(config.count, config.tokens, options, true)) {
+            fprintf(stderr, "Invalid option in config file: %s\n", options->config_path);
+            return false;
+        }
+    }
+
+    if (!parse_sequence(argc - 1, argv + 1, options, false)) return false;
+    timing_resolve(&options->timing_draft, &options->timing);
+    return true;
 }

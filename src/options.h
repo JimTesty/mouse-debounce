@@ -1,7 +1,9 @@
 #ifndef MOUSE_DEBOUNCE_OPTIONS_H
 #define MOUSE_DEBOUNCE_OPTIONS_H
 
-#include "mouse_events.h"
+#include "config_file.h"
+#include "mouse_button.h"
+#include "timing_settings.h"
 
 #include <stdbool.h>
 
@@ -12,11 +14,14 @@ typedef enum {
 
 typedef struct {
     AppMode mode;
-    double short_ms;
-    double hold_ms;
+    TimingDraft timing_draft;
+    TimingSettings timing;
     bool buttons[MOUSE_BUTTON_COUNT];
     const char *output_path;
     double duration_seconds;
+    bool use_config;
+    bool save_config;
+    char config_path[CONFIG_PATH_SIZE];
 } AppOptions;
 
 bool options_parse(int argc, char **argv, AppOptions *options);
