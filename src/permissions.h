@@ -10,5 +10,6 @@
  * unchanged.
  */
 bool permissions_request_accessibility(void);
+bool permissions_has_accessibility(void);
 
 #endif

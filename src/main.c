@@ -23,7 +23,9 @@ typedef struct {
     SignalBridge signals;
     FILE *output;
     CFRunLoopTimerRef duration_timer;
+    CFRunLoopTimerRef permission_timer;
     bool stopping;
+    bool permission_lost;
     bool pid_file_written;
 } App;
 
@@ -61,6 +63,17 @@ static void app_stop(App *app) {
     CFRunLoopStop(CFRunLoopGetCurrent());
 }
 
+static void app_stop_for_permission_loss(App *app) {
+    if (app->stopping) return;
+    app->stopping = true;
+    app->permission_lost = true;
+
+    /* Stop intercepting input before doing any other cleanup. */
+    event_tap_stop(&app->event_tap);
+    fprintf(app->output, "Accessibility permission was revoked; exiting immediately.\n");
+    CFRunLoopStop(CFRunLoopGetCurrent());
+}
+
 static void signal_stop(void *context) {
     app_stop((App *)context);
 }
@@ -68,6 +81,12 @@ static void signal_stop(void *context) {
 static void duration_timer_callback(CFRunLoopTimerRef timer, void *info) {
     (void)timer;
     app_stop((App *)info);
+}
+
+static void permission_timer_callback(CFRunLoopTimerRef timer, void *info) {
+    (void)timer;
+    App *app = (App *)info;
+    if (!permissions_has_accessibility()) app_stop_for_permission_loss(app);
 }
 
 static bool setup_duration_timer(App *app) {
@@ -86,6 +105,23 @@ static bool setup_duration_timer(App *app) {
     );
     if (app->duration_timer == NULL) return false;
     CFRunLoopAddTimer(CFRunLoopGetCurrent(), app->duration_timer, kCFRunLoopCommonModes);
+    return true;
+}
+
+static bool setup_permission_timer(App *app) {
+    CFRunLoopTimerContext ctx = {0};
+    ctx.info = app;
+    app->permission_timer = CFRunLoopTimerCreate(
+        kCFAllocatorDefault,
+        CFAbsoluteTimeGetCurrent() + 2.0,
+        2.0,
+        0,
+        0,
+        permission_timer_callback,
+        &ctx
+    );
+    if (app->permission_timer == NULL) return false;
+    CFRunLoopAddTimer(CFRunLoopGetCurrent(), app->permission_timer, kCFRunLoopCommonModes);
     return true;
 }
 
@@ -113,12 +149,18 @@ static void cleanup(App *app) {
         CFRelease(app->duration_timer);
         app->duration_timer = NULL;
     }
+    if (app->permission_timer != NULL) {
+        CFRunLoopTimerInvalidate(app->permission_timer);
+        CFRelease(app->permission_timer);
+        app->permission_timer = NULL;
+    }
 
     event_tap_stop(&app->event_tap);
     signal_bridge_stop(&app->signals);
 
     if (app->options.mode == APP_MODE_FILTER) {
-        debounce_filter_destroy(&app->filter);
+        if (app->permission_lost) debounce_filter_abandon(&app->filter);
+        else debounce_filter_destroy(&app->filter);
     }
 
     if (app->output != NULL && app->output != stdout) {
@@ -201,6 +243,12 @@ int main(int argc, char **argv) {
             &app)) {
         fprintf(app.output,
             "Could not create CGEventTap. Check Privacy & Security permissions.\n");
+        cleanup(&app);
+        return 1;
+    }
+
+    if (!setup_permission_timer(&app)) {
+        fprintf(app.output, "Could not create Accessibility watchdog timer.\n");
         cleanup(&app);
         return 1;
     }

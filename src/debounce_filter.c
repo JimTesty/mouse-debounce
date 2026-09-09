@@ -176,6 +176,13 @@ void debounce_filter_reset_safely(DebounceFilter *filter) {
     }
 }
 
+void debounce_filter_abandon(DebounceFilter *filter) {
+    for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) {
+        discard_pending_up(&filter->button[i]);
+        debounce_state_init(&filter->button[i].logic);
+    }
+}
+
 void debounce_filter_destroy(DebounceFilter *filter) {
     debounce_filter_flush(filter);
     for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) {

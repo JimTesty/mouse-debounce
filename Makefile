@@ -1,6 +1,7 @@
 CC ?= clang
 CFLAGS ?= -O2 -Wall -Wextra -Wpedantic -std=c11
 MACOSX_DEPLOYMENT_TARGET ?= 10.15
+SIGN_IDENTITY ?= -
 export MACOSX_DEPLOYMENT_TARGET
 
 EXECUTABLE := MouseDebounce
@@ -39,7 +40,7 @@ $(APP): $(OBJECTS) resources/Info.plist
 	mkdir -p "$(MACOS)"
 	cp resources/Info.plist "$(APP)/Contents/Info.plist"
 	$(CC) $(CFLAGS) $(OBJECTS) -o "$(MACOS)/$(EXECUTABLE)" $(FRAMEWORKS)
-	codesign --force --sign - --identifier "$(BUNDLE_ID)" "$(APP)"
+	codesign --force --sign "$(SIGN_IDENTITY)" --identifier "$(BUNDLE_ID)" "$(APP)"
 
 $(OBJ)/%.o: src/%.c
 	mkdir -p "$(OBJ)"

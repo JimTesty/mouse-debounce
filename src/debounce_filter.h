@@ -36,6 +36,7 @@ CGEventRef debounce_filter_handle(
 );
 void debounce_filter_flush(DebounceFilter *filter);
 void debounce_filter_reset_safely(DebounceFilter *filter);
+void debounce_filter_abandon(DebounceFilter *filter);
 void debounce_filter_destroy(DebounceFilter *filter);
 
 #endif

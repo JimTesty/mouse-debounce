@@ -90,6 +90,10 @@ static bool parse_sequence(
             if (i + 1 >= argc || !parse_button_timing(arg, argv[++i], &options->timing_draft)) return false;
         } else if (strcmp(arg, "--buttons") == 0) {
             if (i + 1 >= argc || !mouse_parse_button_list(argv[++i], options->buttons)) return false;
+        } else if (config_mode && strcmp(arg, "--sound-volume") == 0) {
+            if (i + 1 >= argc) return false;
+            fprintf(stderr, "Warning: ignoring unsupported config option %s %s\n", arg, argv[i + 1]);
+            ++i;
         } else if (config_mode) {
             return false;
         } else if (strcmp(arg, "--filter") == 0) {

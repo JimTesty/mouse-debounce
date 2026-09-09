@@ -2,8 +2,12 @@
 
 #include <ApplicationServices/ApplicationServices.h>
 
+bool permissions_has_accessibility(void) {
+    return AXIsProcessTrusted();
+}
+
 bool permissions_request_accessibility(void) {
-    if (CGPreflightPostEventAccess()) return true;
+    if (permissions_has_accessibility()) return true;
 
     /*
      * AXIsProcessTrustedWithOptions is used here instead of requesting
@@ -28,5 +32,5 @@ bool permissions_request_accessibility(void) {
         CFRelease(options);
     }
 
-    return CGPreflightPostEventAccess();
+    return permissions_has_accessibility();
 }
