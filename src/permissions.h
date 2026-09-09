@@ -3,11 +3,12 @@
 
 #include <stdbool.h>
 
-typedef struct {
-    bool listen_allowed;
-    bool post_allowed;
-} PermissionStatus;
-
-PermissionStatus permissions_request(bool needs_post_access);
+/*
+ * MouseDebounce intentionally uses one active CoreGraphics event tap for both
+ * filtering and measurement.  That keeps the app's TCC surface to a single
+ * permission: Accessibility.  Measurement returns every observed event
+ * unchanged.
+ */
+bool permissions_request_accessibility(void);
 
 #endif

@@ -24,7 +24,6 @@ typedef struct {
 
 bool event_tap_start(
     EventTap *tap,
-    bool listen_only,
     CGEventMask mask,
     EventTapHandler handler,
     EventTapResetHandler reset_handler,

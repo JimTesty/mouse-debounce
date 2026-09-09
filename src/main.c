@@ -142,11 +142,11 @@ int main(int argc, char **argv) {
         fprintf(app.output, "Saved config: %s\n", app.options.config_path);
     }
 
-    PermissionStatus permissions = permissions_request(app.options.mode == APP_MODE_FILTER);
-    if (!permissions.listen_allowed || !permissions.post_allowed) {
+    if (!permissions_request_accessibility()) {
         fprintf(app.output,
-            "macOS has not granted the required event permission yet.\n"
-            "Grant Mouse Debounce in Privacy & Security, then relaunch it.\n");
+            "Mouse Debounce needs Accessibility permission.\n"
+            "Enable Mouse Debounce in System Settings > Privacy & Security > Accessibility,\n"
+            "then relaunch it. Input Monitoring is not required.\n");
         cleanup(&app);
         return 1;
     }
@@ -167,7 +167,6 @@ int main(int argc, char **argv) {
 
     if (!event_tap_start(
             &app.event_tap,
-            app.options.mode == APP_MODE_MEASURE,
             mask,
             app_event_handler,
             app_tap_reset,

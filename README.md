@@ -2,7 +2,7 @@
 
 A small, source-auditable macOS utility for repairing worn mouse-button chatter in software.
 
-Version **0.3.0** combines:
+Version **0.4.0** combines:
 
 - the two-threshold state-machine idea from `franzos/mouse-debounce`;
 - the useful macOS `CGEventTap` plumbing pattern from Vorssaint;
@@ -163,7 +163,7 @@ A completely missing wheel detent cannot be reconstructed reliably:
 physical detent -> no observable event
 ```
 
-Software cannot distinguish that from intentionally stopping the wheel. The measurement trace can still diagnose more recoverable faults such as isolated reverse-direction ticks or erratic deltas. Version 0.3 therefore does not synthesize wheel movement.
+Software cannot distinguish that from intentionally stopping the wheel. The measurement trace can still diagnose more recoverable faults such as isolated reverse-direction ticks or erratic deltas. Version 0.4 therefore does not synthesize wheel movement.
 
 ## App bundle and macOS privacy identity
 
@@ -173,9 +173,13 @@ Software cannot distinguish that from intentionally stopping the wheel. The meas
 build/MouseDebounce.app
 ```
 
-The bundle is headless (`LSUIElement=true`) but gives macOS a proper bundle identity for Input Monitoring / event-access privacy decisions. It explicitly requests CoreGraphics listen/post event access.
+The bundle is headless (`LSUIElement=true`) but gives macOS a proper application identity.
 
-The local build is ad-hoc signed. A stable Apple development signature is preferable if repeated rebuilds cause TCC to ask again.
+**Mouse Debounce 0.4 requires only Accessibility permission.** Earlier versions unnecessarily requested both Input Monitoring and Accessibility. The filter needs an active CoreGraphics event tap because it sometimes suppresses a physical event and later posts a withheld Up. Measurement now deliberately uses that same active tap but returns every event unchanged. Because the app needs Accessibility for its normal job anyway, requesting a second, weaker Input Monitoring permission only for measurement adds complexity without improving practical security.
+
+`tools/mousedebouncectl grant` launches the installed app so it can request Accessibility, then opens the Accessibility pane. macOS often suppresses repeat permission dialogs after a previous allow/deny decision; in that case simply enable **Mouse Debounce** in the pane.
+
+The local build is ad-hoc signed. A stable Apple development signature is preferable if repeated rebuilds cause TCC to treat builds as different code identities.
 
 ## launchd lifecycle control
 
@@ -188,7 +192,7 @@ make app
 tools/mousedebouncectl install
 ```
 
-Trigger the privacy request once through LaunchServices:
+Trigger/open the Accessibility permission flow once through LaunchServices:
 
 ```sh
 tools/mousedebouncectl grant
@@ -224,7 +228,7 @@ The service reads the normal config file, so changing thresholds does not requir
 | `src/mouse_events.*` | CoreGraphics mouse-event decoding |
 | `src/config_file.*` | Tiny config.args reader/writer |
 | `src/event_tap.*` | Minimal `CGEventTap` lifecycle |
-| `src/permissions.*` | Input event privacy requests |
+| `src/permissions.*` | Single Accessibility permission request/check |
 | `src/signal_bridge.*` | SIGINT/SIGTERM -> run-loop shutdown |
 | `src/options.*` | CLI/config parsing and precedence |
 | `src/main.c` | Wiring only |

@@ -23,7 +23,6 @@ static CGEventRef tap_callback(
 
 bool event_tap_start(
     EventTap *tap,
-    bool listen_only,
     CGEventMask mask,
     EventTapHandler handler,
     EventTapResetHandler reset_handler,
@@ -34,7 +33,7 @@ bool event_tap_start(
     tap->reset_handler = reset_handler;
     tap->context = context;
 
-    CGEventTapOptions options = listen_only ? kCGEventTapOptionListenOnly : kCGEventTapOptionDefault;
+    CGEventTapOptions options = kCGEventTapOptionDefault;
     tap->tap = CGEventTapCreate(
         kCGHIDEventTap,
         kCGHeadInsertEventTap,
