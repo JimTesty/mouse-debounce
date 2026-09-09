@@ -16,6 +16,8 @@
 #include <string.h>
 #include <unistd.h>
 
+static const bool kEnableScrollDownDebugSound = false;
+
 typedef struct {
     AppOptions options;
     EventTap event_tap;
@@ -41,7 +43,7 @@ static CGEventRef app_event_handler(
         measurement_handle(&app->measurement, type, event);
         return event;
     }
-    if (type == kCGEventScrollWheel) {
+    if (kEnableScrollDownDebugSound && type == kCGEventScrollWheel) {
         if (CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis1) < 0) {
             debounce_sound_play();
         }
@@ -228,7 +230,10 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    CGEventMask mask = mouse_button_event_mask() | CGEventMaskBit(kCGEventScrollWheel);
+    CGEventMask mask = mouse_button_event_mask();
+    if (app.options.mode == APP_MODE_MEASURE || kEnableScrollDownDebugSound) {
+        mask |= CGEventMaskBit(kCGEventScrollWheel);
+    }
 
     if (app.options.mode == APP_MODE_FILTER) {
         debounce_sound_set_volume(app.options.sound_volume);
