@@ -148,10 +148,6 @@ status_service() {
 
 measure_finalize() {
     code=$1
-    if [ "${MEASURE_FINALIZED:-0}" -eq 1 ]; then
-        return "$code"
-    fi
-    MEASURE_FINALIZED=1
     # A second signal must not interrupt service restoration.
     trap '' INT TERM HUP
     trap - EXIT
@@ -195,7 +191,6 @@ measure_session() {
     WAS_RUNNING=0
     TAIL_PID=""
     OPEN_PID=""
-    MEASURE_FINALIZED=0
     if loaded && service_running; then
         WAS_RUNNING=1
     fi

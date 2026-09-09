@@ -9,13 +9,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Half the nanosecond range leaves headroom for rounding and deadline addition. */
+static const double kMaxTimingMs = (double)(UINT64_MAX / 2) / 1000000.0;
+
 static bool parse_positive_double(const char *text, double *out) {
     errno = 0;
     char *end = NULL;
     double value = strtod(text, &end);
-    /* Leave headroom for rounding and adding the monotonic deadline in ns. */
     if (errno != 0 || end == text || *end != '\0' || !isfinite(value) ||
-        value <= 0.0 || value > (double)(UINT64_MAX / 2) / 1000000.0) return false;
+        value <= 0.0 || value > kMaxTimingMs) return false;
     *out = value;
     return true;
 }
