@@ -13,6 +13,21 @@ Version **0.6.0** provides:
 - a human-readable persistent config;
 - launchd lifecycle control.
 
+## Quick start
+
+On macOS with Apple command-line developer tools:
+
+```sh
+make app
+tools/mousedebouncectl install
+tools/mousedebouncectl grant
+tools/mousedebouncectl start
+```
+
+When the Accessibility pane opens, enable **Mouse Debounce** before starting the service. Installation registers the launch agent but does not start it or make it start automatically at login (`RunAtLoad` is false).
+
+Development builds use ad-hoc signing by default. To reduce repeated Accessibility approval prompts, see [Stable local code signing](docs/local-signing.md).
+
 ## Debounce algorithm
 
 ```text
@@ -214,12 +229,11 @@ tools/mousedebouncectl logs
 On macOS with Apple command-line developer tools:
 
 ```sh
-make
+make app
+make test
 ```
 
-Portable tests cover debounce state transitions, timing inheritance, IQR/threshold statistics, and missing-wheel-pulse cadence logic.
-
-The development environment used to package this source can execute those portable tests but cannot link the macOS CoreGraphics app, so the actual `.app` integration must be compiled/tested on macOS.
+Portable tests cover debounce state transitions, timing inheritance, CLI/config parsing and save/load behavior, IQR/threshold statistics, and missing-wheel-pulse cadence logic.
 
 ## Security / audit surface
 

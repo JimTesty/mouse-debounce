@@ -159,6 +159,7 @@ static void cleanup(App *app) {
     signal_bridge_stop(&app->signals);
 
     if (app->options.mode == APP_MODE_FILTER) {
+        /* Permission loss forbids reposting; ordinary shutdown releases held Ups. */
         if (app->permission_lost) debounce_filter_abandon(&app->filter);
         else debounce_filter_destroy(&app->filter);
     }

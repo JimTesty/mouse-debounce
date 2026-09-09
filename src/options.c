@@ -1,8 +1,10 @@
 #include "options.h"
 
-#include "mouse_events.h"
+#include "mouse_button.h"
 
 #include <errno.h>
+#include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,7 +13,9 @@ static bool parse_positive_double(const char *text, double *out) {
     errno = 0;
     char *end = NULL;
     double value = strtod(text, &end);
-    if (errno != 0 || end == text || *end != '\0' || value <= 0.0) return false;
+    /* Leave headroom for rounding and adding the monotonic deadline in ns. */
+    if (errno != 0 || end == text || *end != '\0' || !isfinite(value) ||
+        value <= 0.0 || value > (double)(UINT64_MAX / 2) / 1000000.0) return false;
     *out = value;
     return true;
 }
@@ -20,7 +24,7 @@ static bool parse_nonnegative_double(const char *text, double *out) {
     errno = 0;
     char *end = NULL;
     double value = strtod(text, &end);
-    if (errno != 0 || end == text || *end != '\0' || value < 0.0) return false;
+    if (errno != 0 || end == text || *end != '\0' || !isfinite(value) || value < 0.0) return false;
     *out = value;
     return true;
 }

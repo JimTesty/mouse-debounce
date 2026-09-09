@@ -3,6 +3,7 @@
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <stdbool.h>
+#include <signal.h>
 
 typedef void (*SignalBridgeCallback)(void *context);
 
@@ -12,6 +13,10 @@ typedef struct {
     CFRunLoopSourceRef source;
     SignalBridgeCallback callback;
     void *context;
+    struct sigaction previous_int;
+    struct sigaction previous_term;
+    bool int_installed;
+    bool term_installed;
 } SignalBridge;
 
 bool signal_bridge_start(SignalBridge *bridge, SignalBridgeCallback callback, void *context);

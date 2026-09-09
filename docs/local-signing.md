@@ -27,7 +27,7 @@ make SIGN_IDENTITY="MouseDebounce Local Signing"
 tools/mousedebouncectl install
 ```
 
-The Makefile still defaults to ad-hoc signing when `SIGN_IDENTITY` is not supplied.
+The Makefile defaults to ad-hoc signing when `SIGN_IDENTITY` is not supplied. Signing is applied on every `make app`, so changing `SIGN_IDENTITY` does not require cleaning or relinking first.
 
 When switching from an existing ad-hoc build to the persistent identity, macOS may require one final Accessibility reset/regrant. After that, subsequent builds signed with the same identity should retain the same TCC/code identity.
 

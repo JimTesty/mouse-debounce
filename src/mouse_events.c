@@ -1,8 +1,5 @@
 #include "mouse_events.h"
 
-#include <stdlib.h>
-#include <string.h>
-
 bool mouse_button_from_event(CGEventType type, CGEventRef event, MouseButtonEvent *out) {
     out->is_down = false;
     out->is_up = false;
@@ -36,30 +33,6 @@ bool mouse_button_from_event(CGEventType type, CGEventRef event, MouseButtonEven
         default:
             return false;
     }
-}
-
-bool mouse_parse_button_list(const char *text, bool enabled[MOUSE_BUTTON_COUNT]) {
-    for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) enabled[i] = false;
-
-    char *copy = strdup(text);
-    if (copy == NULL) return false;
-
-    bool any = false;
-    for (char *tok = strtok(copy, ","); tok != NULL; tok = strtok(NULL, ",")) {
-        MouseButton button;
-        if (strcmp(tok, "left") == 0) button = MOUSE_BUTTON_LEFT;
-        else if (strcmp(tok, "right") == 0) button = MOUSE_BUTTON_RIGHT;
-        else if (strcmp(tok, "middle") == 0) button = MOUSE_BUTTON_MIDDLE;
-        else {
-            free(copy);
-            return false;
-        }
-        enabled[button] = true;
-        any = true;
-    }
-
-    free(copy);
-    return any;
 }
 
 CGEventMask mouse_button_event_mask(void) {

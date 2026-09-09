@@ -22,6 +22,7 @@ typedef struct {
     DebounceButtonRuntime button[MOUSE_BUTTON_COUNT];
 } DebounceFilter;
 
+/* Keep the filter at a stable address until destroy/abandon cancels its timers. */
 void debounce_filter_init(
     DebounceFilter *filter,
     const bool enabled[MOUSE_BUTTON_COUNT],

@@ -7,13 +7,6 @@
 
 #define OWN_EVENT_MAGIC INT64_C(0x4d44424e43454f02)
 
-typedef struct {
-    DebounceFilter *filter;
-    MouseButton button;
-} TimerContext;
-
-static TimerContext g_timer_contexts[MOUSE_BUTTON_COUNT];
-
 static uint64_t ms_to_ns(double ms) {
     if (ms <= 0.0) return 0;
     return (uint64_t)(ms * 1000000.0 + 0.5);
@@ -27,9 +20,9 @@ static void cancel_timer(DebounceButtonRuntime *runtime) {
 }
 
 static void post_owned_up(DebounceButtonRuntime *runtime) {
+    cancel_timer(runtime);
     if (runtime->pending_up == NULL) return;
 
-    cancel_timer(runtime);
     CGEventRef event = runtime->pending_up;
     runtime->pending_up = NULL;
     debounce_pending_emitted(&runtime->logic);
@@ -51,37 +44,16 @@ static void discard_pending_up(DebounceButtonRuntime *runtime) {
 
 static void timer_callback(CFRunLoopTimerRef timer, void *info) {
     (void)timer;
-    TimerContext *ctx = (TimerContext *)info;
-    DebounceButtonRuntime *runtime = &ctx->filter->button[ctx->button];
-
-    if (runtime->pending_timer != NULL) {
-        CFRunLoopTimerRef owned = runtime->pending_timer;
-        runtime->pending_timer = NULL;
-        CFRunLoopTimerInvalidate(owned);
-        CFRelease(owned);
-    }
-
-    if (runtime->pending_up != NULL) {
-        CGEventRef event = runtime->pending_up;
-        runtime->pending_up = NULL;
-        debounce_pending_emitted(&runtime->logic);
-        CGEventTimestamp ts = mouse_current_event_timestamp();
-        if (ts != 0) CGEventSetTimestamp(event, ts);
-        CGEventSetIntegerValueField(event, kCGEventSourceUserData, OWN_EVENT_MAGIC);
-        CGEventPost(kCGHIDEventTap, event);
-        CFRelease(event);
-    }
+    post_owned_up((DebounceButtonRuntime *)info);
 }
 
 static bool schedule_timer(DebounceFilter *filter, MouseButton button) {
     DebounceButtonRuntime *runtime = &filter->button[button];
     cancel_timer(runtime);
 
-    g_timer_contexts[button].filter = filter;
-    g_timer_contexts[button].button = button;
-
     CFRunLoopTimerContext context = {0};
-    context.info = &g_timer_contexts[button];
+    /* The filter owns this runtime and cancels its timer before destruction. */
+    context.info = runtime;
     CFAbsoluteTime fire = CFAbsoluteTimeGetCurrent() + (double)filter->hold_ns[button] / 1e9;
     runtime->pending_timer = CFRunLoopTimerCreate(
         kCFAllocatorDefault, fire, 0.0, 0, 0, timer_callback, &context
