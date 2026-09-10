@@ -28,8 +28,7 @@ static void post_owned_up(DebounceButtonRuntime *runtime) {
     runtime->pending_up = NULL;
     debounce_pending_emitted(&runtime->logic);
 
-    CGEventTimestamp ts = mouse_current_event_timestamp();
-    if (ts != 0) CGEventSetTimestamp(event, ts);
+    /* Preserve the physical release's timestamp and position when replaying it. */
     CGEventSetIntegerValueField(event, kCGEventSourceUserData, OWN_EVENT_MAGIC);
     CGEventPost(kCGHIDEventTap, event);
     CFRelease(event);

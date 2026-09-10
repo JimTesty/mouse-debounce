@@ -43,11 +43,3 @@ CGEventMask mouse_button_event_mask(void) {
            CGEventMaskBit(kCGEventOtherMouseDown) |
            CGEventMaskBit(kCGEventOtherMouseUp);
 }
-
-CGEventTimestamp mouse_current_event_timestamp(void) {
-    CGEventRef event = CGEventCreate(NULL);
-    if (event == NULL) return 0;
-    CGEventTimestamp ts = CGEventGetTimestamp(event);
-    CFRelease(event);
-    return ts;
-}

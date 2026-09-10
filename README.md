@@ -105,7 +105,9 @@ MouseDebounce does **not** use `CGEventGetTimestamp()` for debounce or measureme
 
 Each callback is timestamped with macOS `CLOCK_UPTIME_RAW`, which directly returns monotonic nanoseconds. This avoids assumptions about Quartz event-timestamp representation or Mach timebase conversion. A `20 ms` debounce setting therefore means approximately 20 ms of real elapsed callback-receipt time.
 
-When a withheld Up is reposted, its Quartz timestamp is refreshed with a native CoreGraphics timestamp rather than converting the monotonic clock into Quartz units.
+When a delayed Up is reposted, its original event timestamp and mouse `(x, y)`
+position are preserved. Only delivery is delayed; the event does not use the
+pointer's newer position or the replay time.
 
 ## Per-button timing and inheritance
 
@@ -358,7 +360,7 @@ tools/mousedebouncectl logs
 | `src/measurement.*` | Button/wheel tracing and recommendations |
 | `src/debounce_filter.*` | CoreGraphics adapter/timers/withheld Ups |
 | `src/mouse_button.*` | Portable button types/names |
-| `src/mouse_events.*` | CoreGraphics event decoding/native timestamps |
+| `src/mouse_events.*` | CoreGraphics event decoding |
 | `src/config_file.*` | Tiny `config.args` reader/writer |
 | `src/event_tap.*` | Minimal `CGEventTap` lifecycle |
 | `src/event_log.*` | Append-only raw button/wheel logging with local timestamps |

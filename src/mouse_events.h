@@ -14,6 +14,5 @@ typedef struct {
 
 bool mouse_button_from_event(CGEventType type, CGEventRef event, MouseButtonEvent *out);
 CGEventMask mouse_button_event_mask(void);
-CGEventTimestamp mouse_current_event_timestamp(void);
 
 #endif

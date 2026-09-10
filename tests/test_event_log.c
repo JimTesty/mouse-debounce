@@ -9,6 +9,14 @@
 #include <unistd.h>
 
 static uint64_t now_ns;
+static CGEventRef posted_event;
+
+/* Capture replay without submitting synthetic input to the OS. */
+void CGEventPost(CGEventTapLocation tap, CGEventRef event) {
+    (void)tap;
+    assert(posted_event == NULL);
+    posted_event = CGEventCreateCopy(event);
+}
 
 uint64_t monotonic_now_ns(void) { return now_ns; }
 void debounce_sound_play(void) {}
@@ -70,6 +78,25 @@ static void filter_annotations(void) {
         lines++;
     }
     assert(lines == 5 && notes == 2);
+    /* A delayed release must retain the original event time and coordinates. */
+    event = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseDown,
+                                   CGPointMake(123, 456), kCGMouseButtonLeft);
+    assert(event != NULL);
+    DebounceAction action;
+    debounce_filter_handle(&filter, NULL, kCGEventLeftMouseDown, event, &action);
+    CGEventSetType(event, kCGEventLeftMouseUp);
+    CGEventSetTimestamp(event, 123456789);
+    assert(debounce_filter_handle(&filter, NULL, kCGEventLeftMouseUp, event, &action) == NULL);
+    CGEventSetTimestamp(event, 987654321);
+    CGEventSetLocation(event, CGPointMake(789, 987));
+    debounce_filter_flush(&filter);
+    assert(posted_event != NULL);
+    assert(CGEventGetTimestamp(posted_event) == 123456789);
+    assert(CGPointEqualToPoint(CGEventGetLocation(posted_event), CGPointMake(123, 456)));
+    CFRelease(posted_event);
+    posted_event = NULL;
+    CFRelease(event);
+    debounce_filter_destroy(&filter);
     event_log_close(&log);
 }
 
