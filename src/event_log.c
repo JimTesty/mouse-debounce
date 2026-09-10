@@ -5,10 +5,17 @@
 
 #include <errno.h>
 #include <inttypes.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <time.h>
+
+typedef struct EventLogButton {
+    int64_t number;
+    uint64_t last_event_ns;
+    struct EventLogButton *next;
+} EventLogButton;
 
 bool event_log_open(EventLog *log, const char *config_path) {
     memset(log, 0, sizeof(*log));
@@ -72,6 +79,18 @@ bool event_log_handle(EventLog *log, CGEventType type, CGEventRef event, Debounc
         fprintf(log->file, "%-6s %-4s button=%" PRId64 " clickState=%" PRId64,
             name, down ? "down" : "up", button,
             CGEventGetIntegerValueField(event, kCGMouseEventClickState));
+        EventLogButton *previous = log->buttons;
+        while (previous != NULL && previous->number != button) previous = previous->next;
+        if (previous != NULL) {
+            fprintf(log->file, " (%.2fms)", (double)(now - previous->last_event_ns) / 1e6);
+        } else {
+            previous = calloc(1, sizeof(*previous));
+            if (previous == NULL) return false;
+            previous->number = button;
+            previous->next = log->buttons;
+            log->buttons = previous;
+        }
+        previous->last_event_ns = now;
         if (action == DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN) {
             fputs("  <<< suspected bounce (Up/Down within hold-ms; pair suppressed)", log->file);
         } else if (action == DEBOUNCE_DROP) {
@@ -85,4 +104,9 @@ bool event_log_handle(EventLog *log, CGEventType type, CGEventRef event, Debounc
 void event_log_close(EventLog *log) {
     if (log->file != NULL) fclose(log->file);
     log->file = NULL;
+    while (log->buttons != NULL) {
+        EventLogButton *next = log->buttons->next;
+        free(log->buttons);
+        log->buttons = next;
+    }
 }

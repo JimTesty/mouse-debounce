@@ -52,6 +52,9 @@ static void filter_annotations(void) {
         if (strstr(line, "<<< suspected bounce") != NULL) notes++;
         if (lines == 2) assert(strstr(line, "pair suppressed") != NULL);
         if (lines == 3) assert(strstr(line, "duplicate Down; suppressed") != NULL);
+        if (lines == 2 || lines == 3) {
+            assert(strstr(line, " (1.00ms)  <<< suspected bounce") != NULL);
+        }
         if (lines == 4) assert(strstr(line, "RIGHT") != NULL);
         lines++;
     }
@@ -74,7 +77,7 @@ int main(void) {
     assert(event != NULL);
     CGEventSetIntegerValueField(event, kCGMouseEventClickState, 2);
     record(&log, kCGEventLeftMouseDown, event, 0);
-    record(&log, kCGEventLeftMouseUp, event, 100000000);
+    record(&log, kCGEventLeftMouseUp, event, 45670000);
 
     CGEventRef wheel = CGEventCreateScrollWheelEvent(NULL, kCGScrollEventUnitLine, 2, -1, 2);
     assert(wheel != NULL);
@@ -113,6 +116,15 @@ int main(void) {
         assert(second >= 0 && second <= 60 && hundredth >= 0 && hundredth < 100);
         if (strstr(line, "WHEEL  vertical=-1 horizontal=2 axis3=0") != NULL) saw_wheel = true;
         if (strstr(line, "OTHER  down button=3 clickState=2") != NULL) saw_other = true;
+        if (events == 1) {
+            assert(strstr(line, " (45.67ms)\n") != NULL);
+        } else if (events == 4 || events == 6) {
+            assert(strstr(line, " (100.00ms)\n") != NULL);
+        } else if (events == 7) {
+            assert(strstr(line, " (4154.33ms)\n") != NULL);
+        } else {
+            assert(strstr(line, "ms)") == NULL);
+        }
         events++;
     }
     assert(events == 9 && separators == 1 && saw_wheel && saw_other);

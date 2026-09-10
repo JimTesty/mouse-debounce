@@ -12,6 +12,7 @@ typedef struct {
     FILE *file;
     uint64_t last_event_ns;
     bool has_event;
+    struct EventLogButton *buttons;
 } EventLog;
 
 /* Append to events.log beside the selected config file. */

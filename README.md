@@ -205,6 +205,10 @@ duplicate Down. The earlier Up remains in the log; it cannot be identified as
 part of a pair until the returning Down arrives. These notes describe the
 filter's classification, not proof of a hardware glitch.
 
+Button entries end with elapsed time since that same button's previous raw event,
+such as ` (45.67ms)`, before any glitch note. Other buttons and scrolling do not
+reset this timer. A button's first event in each run has no elapsed time.
+
 Each event starts with local date and time to hundredths of a second, such as
 `2026-09-10 17:24:56.78`.
 A `-----` line precedes a Down when more than one second has passed since the
