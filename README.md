@@ -55,9 +55,11 @@ discarded as part of a bounce pair or as duplicates. Only Up events are delayed.
 
 - **`short-ms=0` (default)** means no press-length limit, effectively infinity.
   Every Up following a press gets the `hold-ms` window, even after a long hold.
-- **`short-ms>0`** enables the older, selective behavior. Only an Up arriving less
-  than `short-ms` after the most recent physical Down gets the window. Releases
-  after longer presses pass immediately.
+  The cost is an added `hold-ms` of latency on every genuine release following a
+  press, even when the mouse is behaving perfectly.
+- **`short-ms>0`** targets the first glitch pattern: chatter shortly after a Down.
+  Only an Up arriving less than `short-ms` after the most recent physical Down
+  gets the window. Releases after longer presses pass immediately.
 
 Thus `short-ms=0` does **not** disable debouncing or set the release delay to zero.
 `hold-ms` remains the release delay in either mode. An unmatched Up (for example,
@@ -79,7 +81,7 @@ For the second case, with `--short-ms 0 --hold-ms 70`:
 2070 ms      -> no Down returned, so deliver the release
 ```
 
-The old positive `short-ms` restriction was a latency tradeoff: repair chatter
+Using positive `short-ms` is a latency tradeoff: repair chatter
 after brief presses while leaving long-press releases immediate. It does not
 cover intermittent contact during a long hold. Leave it at `0` for that fault.
 Neither mode removes an isolated false Down: initial presses still pass through
