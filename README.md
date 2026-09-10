@@ -91,16 +91,17 @@ Defaults:
 
 ```text
 short-ms = 0
-hold-ms  = 20
+hold-ms  = 25
 buttons  = left,right,middle
 ```
 
 Increasing `hold-ms` catches longer glitches but delays genuine releases more.
 Intentional re-clicks whose Up-to-Down gap is shorter than this window can be
 merged into one press. With `short-ms=0`, both short and long presses have this
-tradeoff. The 20 ms default will not catch a 23.9 ms gap; choose a window based on
-your faulty mouse's measurements. For example, `hold-ms=70` covers both 23.9 ms
-and 20.4 ms glitches, at the cost of a 70 ms release delay.
+tradeoff. The 25 ms default covers glitches under 25 ms, but not longer ones.
+Choose a window based on your mouse's measurements, including intentional
+double-clicks: their gaps can overlap glitch timings, so a longer window can
+suppress genuine re-clicks too.
 
 ## Timing clock
 
@@ -128,7 +129,7 @@ Global options set all buttons:
 
 Later arguments win. If a per-button value is unset and no global value supplied,
 it inherits the arithmetic mean of explicitly configured sibling buttons. With
-no configured siblings, the defaults are `short-ms=0` and `hold-ms=20`.
+no configured siblings, the defaults are `short-ms=0` and `hold-ms=25`.
 The `--left-short-ms`, `--right-short-ms`, and `--middle-short-ms` overrides still
 exist. Explicit zero counts as a configured value in inheritance, not as “unset.”
 Use global `--short-ms 0` to select unrestricted release repair for all buttons.
@@ -151,7 +152,7 @@ The format is deliberately just app arguments plus optional `#` comments:
 ```text
 --buttons left,right,middle
 --short-ms 0
---hold-ms 20
+--hold-ms 25
 --sound-volume 0.1
 ```
 

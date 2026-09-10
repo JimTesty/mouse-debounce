@@ -10,7 +10,7 @@ static void defaults(void) {
     timing_resolve(&d, &s);
     for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) {
         assert(s.short_ms[i] == 0.0);
-        assert(s.hold_ms[i] == 20.0);
+        assert(s.hold_ms[i] == 25.0);
     }
 }
 

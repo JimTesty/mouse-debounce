@@ -6,7 +6,7 @@
 #include <stdbool.h>
 
 #define DEFAULT_SHORT_MS 0.0
-#define DEFAULT_HOLD_MS 20.0
+#define DEFAULT_HOLD_MS 25.0
 
 typedef struct {
     bool short_set[MOUSE_BUTTON_COUNT];
