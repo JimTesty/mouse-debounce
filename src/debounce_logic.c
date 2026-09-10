@@ -47,7 +47,8 @@ DebounceAction debounce_on_up(
         held_ns = now_ns - state->last_physical_down_ns;
     }
 
-    if (held_ns < short_ns) {
+    /* Zero removes the press-length restriction, catching glitches during long holds. */
+    if (short_ns == 0 || held_ns < short_ns) {
         state->pending_up = true;
         state->pending_deadline_ns = now_ns + hold_ns;
         return DEBOUNCE_HOLD_UP;

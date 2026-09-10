@@ -4,7 +4,7 @@ A small, source-auditable macOS utility for repairing worn mouse-button chatter 
 
 Version **0.6.0** provides:
 
-- Linux `franzos/mouse-debounce`-style short-release repair;
+- mouse-button release-bounce repair, including glitches during long holds;
 - minimal CoreGraphics event-tap plumbing inspired by Vorssaint;
 - left/right/middle filtering by default;
 - per-button timing inheritance;
@@ -30,50 +30,69 @@ Development builds use ad-hoc signing by default. To reduce repeated Accessibili
 
 ## Debounce algorithm
 
-MouseDebounce uses two separate time windows:
+The main setting is `hold-ms`: how long to wait after an **Up** before delivering
+the release to the application. A first **Down** is delivered immediately. If
+another Down arrives before that wait ends, the filter discards the withheld Up
+and returning Down. The application sees one uninterrupted press. Otherwise,
+the Up is delivered when the wait ends. A Down at or after the deadline starts
+a new press. Duplicate Downs while already held are also suppressed.
 
-- `short-ms` decides whether a press is suspiciously short. It measures from the
-  physical **Down** to the following physical **Up**.
-- `hold-ms` is the extra observation period after a suspicious Up. It gives the
-  button time to bounce back Down before the Up is delivered to the application.
+`short-ms` is an optional restriction on which releases get that wait:
 
-A Down is delivered immediately. If its Up arrives in less than `short-ms`, that
-Up is temporarily withheld. A returning Down before the `hold-ms` deadline makes
-the withheld Up and returning Down a bounce pair, so both are discarded and the
-application continues to see one uninterrupted press. If no Down returns, the Up
-is delivered when the deadline expires. An Up after a press lasting at least
-`short-ms` is delivered immediately, without the extra hold delay. Duplicate
-Downs are also suppressed while the application already considers the button
-down.
+- **`short-ms=0` (default)** means no press-length limit, effectively infinity.
+  Every Up following a press gets the `hold-ms` window, even after a long hold.
+- **`short-ms>0`** enables the older, selective behavior. Only an Up arriving less
+  than `short-ms` after the most recent physical Down gets the window. Releases
+  after longer presses pass immediately.
 
-For example, with `--short-ms 20 --hold-ms 20`:
+Thus `short-ms=0` does **not** disable debouncing or set the release delay to zero.
+`hold-ms` remains the release delay in either mode. An unmatched Up (for example,
+when the utility starts with the button already held) passes through to avoid
+leaving the application stuck in a pressed state.
+
+### Two common glitch patterns
+
+1. **Chatter around the initial press.** You press once, but the switch rapidly
+   reports `Down -> Up -> Down`. An extra Up/Down pair can look like a second click.
+   The filter holds the early Up and discards the pair if Down returns within
+   `hold-ms`. Both modes can repair this; with positive `short-ms`, the initial
+   Down-to-Up duration must also be below that threshold.
+2. **A brief release during a hold or drag.** You are still pressing, possibly
+   lightly, but the switch momentarily reports Up and then Down. For example,
+   after a 993.6 ms press it reports Up, followed by Down 23.9 ms later. Use
+   `short-ms=0` and a `hold-ms` longer than the glitch gap. A setting such as
+   `short-ms=50` misses this case because the preceding press lasted over 50 ms.
+
+For the second case, with `--short-ms 0 --hold-ms 70`:
 
 ```text
-0 ms   Down  -> delivered immediately
-8 ms   Up    -> press was shorter than 20 ms; hold this Up until 28 ms
-15 ms  Down  -> before 28 ms, so discard this Down and the held Up as chatter
+   0 ms  Down -> delivered immediately; begin holding/dragging
+1000 ms  Up   -> withheld until 1070 ms; application still sees button held
+1024 ms  Down -> discard this Down and the withheld Up; drag continues
+2000 ms  Up   -> actual release; withheld until 2070 ms
+2070 ms      -> no Down returned, so deliver the release
 ```
 
-Without the returning Down at 15 ms, the held Up would be delivered at 28 ms. By
-contrast, a separate press with Down at 0 ms and Up at 35 ms is delivered without
-any extra delay. After a bounce pair, the next press duration is measured from
-the returning Down (15 ms in this example).
+The old positive `short-ms` restriction was a latency tradeoff: repair chatter
+after brief presses while leaving long-press releases immediate. It does not
+cover intermittent contact during a long hold. Leave it at `0` for that fault.
+Neither mode removes an isolated false Down: initial presses still pass through
+immediately, and the filter cannot know your physical intent.
 
 Defaults:
 
 ```text
-short-ms = 20
+short-ms = 0
 hold-ms  = 20
 buttons  = left,right,middle
 ```
 
-Tuning is a tradeoff. Raising `short-ms` makes more brief presses eligible for
-filtering. Raising `hold-ms` catches bounce that returns later, but also delays
-the release of eligible presses for longer. Real, very fast clicks or intentional
-rapid re-clicks can resemble switch chatter: a lone fast click is preserved but
-its Up is delayed, while a fast Up/Down pair inside the hold window can be merged
-into one continuous press. Start near the defaults and use measurement evidence
-from the faulty button before widening either window.
+Increasing `hold-ms` catches longer glitches but delays genuine releases more.
+Intentional re-clicks whose Up-to-Down gap is shorter than this window can be
+merged into one press. With `short-ms=0`, both short and long presses have this
+tradeoff. The 20 ms default will not catch a 23.9 ms gap; choose a window based on
+your faulty mouse's measurements. For example, `hold-ms=70` covers both 23.9 ms
+and 20.4 ms glitches, at the cost of a 70 ms release delay.
 
 ## Timing clock
 
@@ -88,18 +107,28 @@ When a withheld Up is reposted, its Quartz timestamp is refreshed with a native 
 Buttons can have separate values:
 
 ```text
---left-short-ms 18 --left-hold-ms 16
---right-short-ms 20 --right-hold-ms 22
---middle-short-ms 25 --middle-hold-ms 20
+--left-hold-ms 30
+--right-hold-ms 25
+--middle-hold-ms 20
 ```
 
 Global options set all buttons:
 
 ```text
---short-ms 20 --hold-ms 20
+--short-ms 0 --hold-ms 70
 ```
 
-Later arguments win. If a per-button value is unset and no global value supplied, it inherits the arithmetic mean of explicitly configured sibling buttons. With no configured siblings it uses the 20 ms default.
+Later arguments win. If a per-button value is unset and no global value supplied,
+it inherits the arithmetic mean of explicitly configured sibling buttons. With
+no configured siblings, the defaults are `short-ms=0` and `hold-ms=20`.
+The `--left-short-ms`, `--right-short-ms`, and `--middle-short-ms` overrides still
+exist. Explicit zero counts as a configured value in inheritance, not as “unset.”
+Use global `--short-ms 0` to select unrestricted release repair for all buttons.
+
+Filtering state and deadlines are independent per button. For example,
+`--short-ms 0 --right-short-ms 50` repairs releases after any left/middle press,
+but only after short right presses. A bounce or timeout on one button cannot
+cancel or release another button's pending Up.
 
 ## Persistent config
 
@@ -113,12 +142,16 @@ The format is deliberately just app arguments plus optional `#` comments:
 
 ```text
 --buttons left,right,middle
---short-ms 20
+--short-ms 0
 --hold-ms 20
 --sound-volume 0.1
 ```
 
 Config loads first and CLI arguments override it.
+
+Existing saved positive `short-ms` values retain their old behavior; changing
+the default does not override them. To repair long-hold glitches, explicitly
+save `--short-ms 0` along with your chosen hold window.
 
 `--sound-volume` accepts `0` through `1` and is saved like the other settings;
 `0` silences all sounds. `--debug` enables startup, scroll-down, and filter
@@ -128,7 +161,7 @@ command-line switch, not a saved setting.
 Recommended save command:
 
 ```sh
-tools/mousedebouncectl save --short-ms 20 --hold-ms 20
+tools/mousedebouncectl save --short-ms 0 --hold-ms 70
 ```
 
 This calls `--save-config-and-exit`, so no extra long-running process remains. If the launchd service was running, the controller restarts it so the new config takes effect.
@@ -175,14 +208,18 @@ At session end it prints per-button sample counts, Tukey-IQR outlier removal, me
 Raw-event measurement alerts by sound when it sees a suspected button bounce and
 prints that event's entire terminal line in bold (`--sound-volume 0` mutes it).
 It calls the same debounce functions as filtering, with separate state and no
-input suppression. A short press alone is only a candidate: the returning Down
-within the hold window triggers the alert. Duplicate Downs also trigger alerts.
-Short-press bounce-pair alerts are yellow as well as bold; duplicate-Down alerts
-are bold only. The line also names the reason, including in a plain-text log.
+input suppression. An Up alone is not an alert: the returning Down within the
+hold window triggers it. With `short-ms=0`, this works after long holds too;
+positive `short-ms` retains the press-length restriction. Duplicate Downs also
+trigger alerts. Up/Down bounce-pair alerts are yellow as well as bold;
+duplicate-Down alerts are bold only. The line also names the reason, including
+in a plain-text log.
 These warnings mean “the filter would suppress this,” not proof of faulty hardware.
 Measurement uses your saved timing and volume settings; pass timing options to
 override them, or `--no-config` to try the defaults. `--debug` is not needed for
 bounce alerts.
+Suggested settings estimate `hold-ms` from release-to-Down gaps and preserve your
+configured `short-ms`; calibration does not silently switch the detection mode.
 Pressing Ctrl-C ends the session cleanly and prints the summary collected so far.
 
 If the mouse happens to behave perfectly during the session, the button recommendations may not contain useful chatter calibration data. Do **not** overfit settings to a clean session; rerun measurement when the fault recurs.

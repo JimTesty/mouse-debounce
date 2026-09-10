@@ -12,16 +12,6 @@
 /* Half the nanosecond range leaves headroom for rounding and deadline addition. */
 static const double kMaxTimingMs = (double)(UINT64_MAX / 2) / 1000000.0;
 
-static bool parse_positive_double(const char *text, double *out) {
-    errno = 0;
-    char *end = NULL;
-    double value = strtod(text, &end);
-    if (errno != 0 || end == text || *end != '\0' || !isfinite(value) ||
-        value <= 0.0 || value > kMaxTimingMs) return false;
-    *out = value;
-    return true;
-}
-
 static bool parse_nonnegative_double(const char *text, double *out) {
     errno = 0;
     char *end = NULL;
@@ -47,6 +37,8 @@ void options_print_usage(const char *argv0) {
         "  --left-short-ms N / --left-hold-ms N\n"
         "  --right-short-ms N / --right-hold-ms N\n"
         "  --middle-short-ms N / --middle-hold-ms N\n"
+        "  short N is the press-length limit; 0 means no limit (every Up is held)\n"
+        "  hold N is the held-release debounce window and must be greater than 0\n"
         "\n"
         "Sound:\n"
         "  --sound-volume N   alert/debug tick volume, 0..1 (default 0.1; 0 mutes)\n"
@@ -72,7 +64,12 @@ static bool parse_button_timing(
     TimingDraft *draft
 ) {
     double value;
-    if (!parse_positive_double(value_text, &value)) return false;
+    bool is_short = strcmp(name, "--short-ms") == 0 ||
+        strcmp(name, "--left-short-ms") == 0 ||
+        strcmp(name, "--right-short-ms") == 0 ||
+        strcmp(name, "--middle-short-ms") == 0;
+    if (!parse_nonnegative_double(value_text, &value) || value > kMaxTimingMs ||
+        (!is_short && value == 0.0)) return false;
 
     if (strcmp(name, "--short-ms") == 0) timing_set_short_all(draft, value);
     else if (strcmp(name, "--hold-ms") == 0) timing_set_hold_all(draft, value);

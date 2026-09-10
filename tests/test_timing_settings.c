@@ -9,7 +9,7 @@ static void defaults(void) {
     timing_draft_init(&d);
     timing_resolve(&d, &s);
     for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) {
-        assert(s.short_ms[i] == 20.0);
+        assert(s.short_ms[i] == 0.0);
         assert(s.hold_ms[i] == 20.0);
     }
 }
@@ -30,6 +30,18 @@ static void sibling_inheritance(void) {
     assert(s.hold_ms[MOUSE_BUTTON_MIDDLE] == 17.0);
 }
 
+static void explicit_zero_is_set(void) {
+    TimingDraft d;
+    TimingSettings s;
+    timing_draft_init(&d);
+    timing_set_short_button(&d, MOUSE_BUTTON_LEFT, 0.0);
+    timing_set_short_button(&d, MOUSE_BUTTON_RIGHT, 30.0);
+    timing_resolve(&d, &s);
+    assert(s.short_ms[MOUSE_BUTTON_LEFT] == 0.0);
+    assert(s.short_ms[MOUSE_BUTTON_RIGHT] == 30.0);
+    assert(s.short_ms[MOUSE_BUTTON_MIDDLE] == 15.0);
+}
+
 static void global_then_override(void) {
     TimingDraft d;
     TimingSettings s;
@@ -47,6 +59,7 @@ static void global_then_override(void) {
 int main(void) {
     defaults();
     sibling_inheritance();
+    explicit_zero_is_set();
     global_then_override();
     puts("timing_settings tests passed");
     return 0;

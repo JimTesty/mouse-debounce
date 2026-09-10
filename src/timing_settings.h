@@ -5,7 +5,7 @@
 
 #include <stdbool.h>
 
-#define DEFAULT_SHORT_MS 20.0
+#define DEFAULT_SHORT_MS 0.0
 #define DEFAULT_HOLD_MS 20.0
 
 typedef struct {

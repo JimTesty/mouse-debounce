@@ -45,6 +45,7 @@ void measurement_print_instructions(Measurement *m, double duration_seconds) {
         "used for debounce timing. Nothing is modified.\n"
         "Suspected button bounce is marked in bold and sounds a tick (volume 0 mutes).\n"
         "These are events the current filter settings would suppress, not proof of a fault.\n"
+        "short-ms=0 applies the hold window after every press, including long holds.\n"
         "Ctrl-C ends the session and prints the same summary as the timer.\n\n"
         "Suggested test%s:\n"
         "  1. LEFT:   ~10 normal clicks, ~5 double-clicks, ~5 short/long drags.\n"
@@ -91,10 +92,10 @@ static void handle_button(Measurement *m, CGEventType type, CGEventRef event, ui
     double elapsed_s = elapsed_seconds(m, now_ns);
     int64_t click_state = CGEventGetIntegerValueField(event, kCGMouseEventClickState);
     DebounceAction action = button_filter_action(m, mouse, now_ns);
-    bool short_bounce = action == DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN;
-    bool bounce = short_bounce || action == DEBOUNCE_DROP;
+    bool bounce_pair = action == DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN;
+    bool bounce = bounce_pair || action == DEBOUNCE_DROP;
     if (bounce) {
-        fputs(short_bounce ? "\033[1;33m" : "\033[1m", m->out);
+        fputs(bounce_pair ? "\033[1;33m" : "\033[1m", m->out);
         debounce_sound_play();
     }
 
@@ -127,7 +128,7 @@ static void handle_button(Measurement *m, CGEventType type, CGEventRef event, ui
     }
     if (bounce) {
         fprintf(m->out, "  <<< suspected bounce (%s; filter would suppress)\033[0m",
-            short_bounce ? "short press + returning Down" : "duplicate Down");
+            bounce_pair ? "Up/Down within hold-ms" : "duplicate Down");
     }
     fputc('\n', m->out);
     fflush(m->out);
@@ -260,13 +261,15 @@ static const char *inheritance_label(bool measured, int measured_siblings) {
 void measurement_print_summary(Measurement *m) {
     fprintf(m->out, "\nMeasurement summary\n-------------------\n");
 
-    ThresholdAnalysis press_analysis[MOUSE_BUTTON_COUNT];
     ThresholdAnalysis gap_analysis[MOUSE_BUTTON_COUNT];
-    memset(press_analysis, 0, sizeof(press_analysis));
     memset(gap_analysis, 0, sizeof(gap_analysis));
 
     TimingDraft suggested;
     timing_draft_init(&suggested);
+    /* Keep the chosen press-length restriction; calibrate only the release gap. */
+    for (int button = 0; button < MOUSE_BUTTON_COUNT; ++button) {
+        timing_set_short_button(&suggested, (MouseButton)button, m->timing.short_ms[button]);
+    }
 
     for (int button = 0; button < MOUSE_BUTTON_COUNT; ++button) {
         if (!m->enabled[button]) continue;
@@ -276,17 +279,10 @@ void measurement_print_summary(Measurement *m) {
         print_stats_line(m->out, "press durations", m->press_ms[button], m->press_count[button]);
         print_stats_line(m->out, "release->next-down gaps", m->gap_ms[button], m->gap_count[button]);
 
-        press_analysis[button] = stats_analyze_threshold(
-            m->press_ms[button], m->press_count[button], ANALYSIS_WINDOW_MS);
         gap_analysis[button] = stats_analyze_threshold(
             m->gap_ms[button], m->gap_count[button], ANALYSIS_WINDOW_MS);
-        print_threshold_analysis(m->out, "short-ms", press_analysis[button]);
         print_threshold_analysis(m->out, "hold-ms", gap_analysis[button]);
 
-        if (press_analysis[button].clear_split) {
-            timing_set_short_button(&suggested, (MouseButton)button,
-                press_analysis[button].suggested_threshold_ms);
-        }
         if (gap_analysis[button].clear_split) {
             timing_set_hold_button(&suggested, (MouseButton)button,
                 gap_analysis[button].suggested_threshold_ms);
@@ -299,20 +295,19 @@ void measurement_print_summary(Measurement *m) {
     fprintf(m->out,
         "\nSuggested settings\n------------------\n"
         "Heuristic only: separated low-timing clusters are analyzed after Tukey-IQR\n"
-        "outlier removal. Missing buttons inherit measured siblings; otherwise 20 ms.\n");
+        "outlier removal. Missing hold values inherit measured siblings; otherwise 20 ms.\n"
+        "short-ms is kept as configured (0 applies to every press), not estimated.\n");
 
     for (int button = 0; button < MOUSE_BUTTON_COUNT; ++button) {
         if (!m->enabled[button]) continue;
-        int short_siblings = 0, hold_siblings = 0;
+        int hold_siblings = 0;
         for (int other = 0; other < MOUSE_BUTTON_COUNT; ++other) {
             if (other == button) continue;
-            if (press_analysis[other].clear_split) short_siblings++;
             if (gap_analysis[other].clear_split) hold_siblings++;
         }
-        fprintf(m->out, "  %-6s short-ms=%5.0f (%s), hold-ms=%5.0f (%s)\n",
+        fprintf(m->out, "  %-6s short-ms=%.3g (configured), hold-ms=%5.0f (%s)\n",
             mouse_button_name((MouseButton)button),
             resolved.short_ms[button],
-            inheritance_label(press_analysis[button].clear_split, short_siblings),
             resolved.hold_ms[button],
             inheritance_label(gap_analysis[button].clear_split, hold_siblings));
     }
@@ -320,7 +315,7 @@ void measurement_print_summary(Measurement *m) {
     fprintf(m->out, "\nSuggested config/CLI arguments:\n  ");
     for (int button = 0; button < MOUSE_BUTTON_COUNT; ++button) {
         if (!m->enabled[button]) continue;
-        fprintf(m->out, "--%s-short-ms %.0f --%s-hold-ms %.0f ",
+        fprintf(m->out, "--%s-short-ms %.3g --%s-hold-ms %.0f ",
             mouse_button_cli_name((MouseButton)button), resolved.short_ms[button],
             mouse_button_cli_name((MouseButton)button), resolved.hold_ms[button]);
     }

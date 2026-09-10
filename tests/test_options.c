@@ -9,10 +9,15 @@
 #include <unistd.h>
 
 static void invalid_arguments(void) {
-    const char *invalid[] = {"nan", "inf", "-inf", "0", "-1", "1e30", "20ms", ""};
+    const char *invalid[] = {"nan", "inf", "-inf", "-1", "1e30", "20ms", ""};
     AppOptions options;
     for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
         char *args[] = {"test", "--no-config", "--short-ms", (char *)invalid[i]};
+        assert(!options_parse(4, args, &options));
+    }
+    const char *invalid_hold[] = {"nan", "inf", "-inf", "0", "-1", "1e30", "20ms", ""};
+    for (size_t i = 0; i < sizeof(invalid_hold) / sizeof(invalid_hold[0]); ++i) {
+        char *args[] = {"test", "--no-config", "--hold-ms", (char *)invalid_hold[i]};
         assert(!options_parse(4, args, &options));
     }
     char *missing[] = {"test", "--no-config", "--hold-ms"};
@@ -45,6 +50,20 @@ static void invalid_arguments(void) {
     }
 }
 
+static void zero_short_options(void) {
+    AppOptions options;
+    char *global[] = {"test", "--no-config", "--short-ms", "0"};
+    assert(options_parse(4, global, &options));
+    for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) assert(options.timing.short_ms[i] == 0.0);
+
+    char *per_button[] = {"test", "--no-config", "--left-short-ms", "0",
+                          "--right-short-ms", "30"};
+    assert(options_parse(6, per_button, &options));
+    assert(options.timing.short_ms[MOUSE_BUTTON_LEFT] == 0.0);
+    assert(options.timing.short_ms[MOUSE_BUTTON_RIGHT] == 30.0);
+    assert(options.timing.short_ms[MOUSE_BUTTON_MIDDLE] == 15.0);
+}
+
 static void precedence_and_roundtrip(void) {
     char directory[] = "/tmp/mousedebounce-options-XXXXXX";
     assert(mkdtemp(directory) != NULL);
@@ -52,7 +71,7 @@ static void precedence_and_roundtrip(void) {
     assert(snprintf(path, sizeof(path), "%s/config.args", directory) > 0);
     FILE *file = fopen(path, "w");
     assert(file != NULL);
-    assert(fputs("# Config precedes CLI\n--left-short-ms 18\n--hold-ms 21\n", file) >= 0);
+    assert(fputs("# Config precedes CLI\n--short-ms 0\n--left-short-ms 18\n--hold-ms 21\n", file) >= 0);
     assert(fclose(file) == 0);
 
     AppOptions options;
@@ -61,7 +80,7 @@ static void precedence_and_roundtrip(void) {
     assert(options_parse(9, args, &options));
     assert(options.timing.short_ms[0] == 18);
     assert(options.timing.short_ms[1] == 24);
-    assert(options.timing.short_ms[2] == 21);
+    assert(options.timing.short_ms[2] == 0);
     assert(options.timing.hold_ms[0] == 12.5);
     assert(options.timing.hold_ms[1] == 30);
     assert(options.timing.hold_ms[2] == 30);
@@ -91,6 +110,7 @@ static void precedence_and_roundtrip(void) {
 
 int main(void) {
     invalid_arguments();
+    zero_short_options();
     precedence_and_roundtrip();
     puts("options/config tests passed");
     return 0;
