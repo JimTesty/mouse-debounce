@@ -39,6 +39,15 @@ FRAMEWORKS := -framework ApplicationServices -framework CoreFoundation -framewor
 
 all: app test
 
+# Synthetic CoreGraphics events only; no event tap, Accessibility access, or audio.
+.PHONY: test-measurement
+test-measurement: $(BUILD)/test-measurement
+	$(BUILD)/test-measurement
+
+$(BUILD)/test-measurement: tests/test_measurement.c src/measurement.c src/measurement.h src/debounce_logic.c src/debounce_logic.h src/mouse_events.c src/mouse_events.h src/mouse_button.c src/mouse_button.h src/statistics.c src/statistics.h src/timing_settings.c src/timing_settings.h src/wheel_analysis.c src/wheel_analysis.h
+	mkdir -p "$(BUILD)"
+	$(CC) $(CFLAGS) -Isrc tests/test_measurement.c src/measurement.c src/debounce_logic.c src/mouse_events.c src/mouse_button.c src/statistics.c src/timing_settings.c src/wheel_analysis.c -o $@ -framework ApplicationServices -framework CoreFoundation
+
 app: $(BINARY)
 	codesign --force --sign "$(SIGN_IDENTITY)" --identifier "$(BUNDLE_ID)" "$(APP)"
 

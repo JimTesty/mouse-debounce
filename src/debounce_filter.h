@@ -17,6 +17,7 @@ typedef struct {
 
 typedef struct {
     bool enabled[MOUSE_BUTTON_COUNT];
+    bool debug;
     uint64_t short_ns[MOUSE_BUTTON_COUNT];
     uint64_t hold_ns[MOUSE_BUTTON_COUNT];
     DebounceButtonRuntime button[MOUSE_BUTTON_COUNT];

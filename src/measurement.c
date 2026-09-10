@@ -1,6 +1,7 @@
 #include "measurement.h"
 
 #include "monotonic_clock.h"
+#include "debounce_sound.h"
 #include "statistics.h"
 #include "timing_settings.h"
 
@@ -27,10 +28,12 @@ static double interval_ms(uint64_t newer_ns, uint64_t older_ns) {
 void measurement_init(
     Measurement *measurement,
     const bool enabled[MOUSE_BUTTON_COUNT],
+    const TimingSettings *timing,
     FILE *out
 ) {
     memset(measurement, 0, sizeof(*measurement));
     measurement->out = out != NULL ? out : stdout;
+    measurement->timing = *timing;
     for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) measurement->enabled[i] = enabled[i];
     wheel_analyzer_init(&measurement->wheel_vertical);
     wheel_analyzer_init(&measurement->wheel_horizontal);
@@ -39,7 +42,10 @@ void measurement_init(
 void measurement_print_instructions(Measurement *m, double duration_seconds) {
     fprintf(m->out,
         "Measurement uses CLOCK_UPTIME_RAW at event-tap receipt; CGEvent timestamps are not\n"
-        "used for debounce timing. Nothing is modified.\n\n"
+        "used for debounce timing. Nothing is modified.\n"
+        "Suspected button bounce is marked in bold and sounds a tick (volume 0 mutes).\n"
+        "These are events the current filter settings would suppress, not proof of a fault.\n"
+        "Ctrl-C ends the session and prints the same summary as the timer.\n\n"
         "Suggested test%s:\n"
         "  1. LEFT:   ~10 normal clicks, ~5 double-clicks, ~5 short/long drags.\n"
         "  2. RIGHT:  same if practical.\n"
@@ -53,7 +59,28 @@ void measurement_print_instructions(Measurement *m, double duration_seconds) {
     if (duration_seconds > 0.0) {
         fprintf(m->out, "This measurement will auto-exit after %.1f seconds.\n\n", duration_seconds);
     }
+    for (int button = 0; button < MOUSE_BUTTON_COUNT; ++button) {
+        if (m->enabled[button]) {
+            fprintf(m->out, "  %-6s detection: short-ms=%.1f hold-ms=%.1f\n",
+                mouse_button_name((MouseButton)button),
+                m->timing.short_ms[button], m->timing.hold_ms[button]);
+        }
+    }
+    fputc('\n', m->out);
     fflush(m->out);
+}
+
+static DebounceAction button_filter_action(Measurement *m, MouseButtonEvent mouse, uint64_t now_ns) {
+    DebounceState *state = &m->shadow[mouse.button];
+    /* Simulate timer expiry before this event, without posting or withholding input. */
+    if (state->pending_up && now_ns >= state->pending_deadline_ns) {
+        debounce_pending_emitted(state);
+    }
+    return mouse.is_down
+        ? debounce_on_down(state, now_ns)
+        : debounce_on_up(state, now_ns,
+            (uint64_t)(m->timing.short_ms[mouse.button] * 1000000.0 + 0.5),
+            (uint64_t)(m->timing.hold_ms[mouse.button] * 1000000.0 + 0.5));
 }
 
 static void handle_button(Measurement *m, CGEventType type, CGEventRef event, uint64_t now_ns) {
@@ -63,6 +90,13 @@ static void handle_button(Measurement *m, CGEventType type, CGEventRef event, ui
     if (m->first_ns == 0) m->first_ns = now_ns;
     double elapsed_s = elapsed_seconds(m, now_ns);
     int64_t click_state = CGEventGetIntegerValueField(event, kCGMouseEventClickState);
+    DebounceAction action = button_filter_action(m, mouse, now_ns);
+    bool short_bounce = action == DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN;
+    bool bounce = short_bounce || action == DEBOUNCE_DROP;
+    if (bounce) {
+        fputs(short_bounce ? "\033[1;33m" : "\033[1m", m->out);
+        debounce_sound_play();
+    }
 
     if (mouse.is_down) {
         double gap = interval_ms(now_ns, m->last_up_ns[mouse.button]);
@@ -70,11 +104,11 @@ static void handle_button(Measurement *m, CGEventType type, CGEventRef event, ui
         m->last_down_ns[mouse.button] = now_ns;
         if (gap >= 0.0) {
             fprintf(m->out,
-                "%9.3fs  %-6s down   gap-from-up=%8.1f ms  clickState=%" PRId64 "\n",
+                "%9.3fs  %-6s down   gap-from-up=%8.1f ms  clickState=%" PRId64,
                 elapsed_s, mouse_button_name(mouse.button), gap, click_state);
         } else {
             fprintf(m->out,
-                "%9.3fs  %-6s down   gap-from-up=       -  clickState=%" PRId64 "\n",
+                "%9.3fs  %-6s down   gap-from-up=       -  clickState=%" PRId64,
                 elapsed_s, mouse_button_name(mouse.button), click_state);
         }
     } else {
@@ -83,14 +117,19 @@ static void handle_button(Measurement *m, CGEventType type, CGEventRef event, ui
         m->last_up_ns[mouse.button] = now_ns;
         if (held >= 0.0) {
             fprintf(m->out,
-                "%9.3fs  %-6s up     press-held=%8.1f ms  clickState=%" PRId64 "\n",
+                "%9.3fs  %-6s up     press-held=%8.1f ms  clickState=%" PRId64,
                 elapsed_s, mouse_button_name(mouse.button), held, click_state);
         } else {
             fprintf(m->out,
-                "%9.3fs  %-6s up     press-held=       -  clickState=%" PRId64 "\n",
+                "%9.3fs  %-6s up     press-held=       -  clickState=%" PRId64,
                 elapsed_s, mouse_button_name(mouse.button), click_state);
         }
     }
+    if (bounce) {
+        fprintf(m->out, "  <<< suspected bounce (%s; filter would suppress)\033[0m",
+            short_bounce ? "short press + returning Down" : "duplicate Down");
+    }
+    fputc('\n', m->out);
     fflush(m->out);
 }
 

@@ -30,12 +30,34 @@ Development builds use ad-hoc signing by default. To reduce repeated Accessibili
 
 ## Debounce algorithm
 
+MouseDebounce uses two separate time windows:
+
+- `short-ms` decides whether a press is suspiciously short. It measures from the
+  physical **Down** to the following physical **Up**.
+- `hold-ms` is the extra observation period after a suspicious Up. It gives the
+  button time to bounce back Down before the Up is delivered to the application.
+
+A Down is delivered immediately. If its Up arrives in less than `short-ms`, that
+Up is temporarily withheld. A returning Down before the `hold-ms` deadline makes
+the withheld Up and returning Down a bounce pair, so both are discarded and the
+application continues to see one uninterrupted press. If no Down returns, the Up
+is delivered when the deadline expires. An Up after a press lasting at least
+`short-ms` is delivered immediately, without the extra hold delay. Duplicate
+Downs are also suppressed while the application already considers the button
+down.
+
+For example, with `--short-ms 20 --hold-ms 20`:
+
 ```text
-Down -> pass immediately
-short Up -> temporarily withhold
-returning Down before hold timeout -> discard {Up, Down} as a bounce pair
-otherwise -> release the withheld Up
+0 ms   Down  -> delivered immediately
+8 ms   Up    -> press was shorter than 20 ms; hold this Up until 28 ms
+15 ms  Down  -> before 28 ms, so discard this Down and the held Up as chatter
 ```
+
+Without the returning Down at 15 ms, the held Up would be delivered at 28 ms. By
+contrast, a separate press with Down at 0 ms and Up at 35 ms is delivered without
+any extra delay. After a bounce pair, the next press duration is measured from
+the returning Down (15 ms in this example).
 
 Defaults:
 
@@ -44,6 +66,14 @@ short-ms = 20
 hold-ms  = 20
 buttons  = left,right,middle
 ```
+
+Tuning is a tradeoff. Raising `short-ms` makes more brief presses eligible for
+filtering. Raising `hold-ms` catches bounce that returns later, but also delays
+the release of eligible presses for longer. Real, very fast clicks or intentional
+rapid re-clicks can resemble switch chatter: a lone fast click is preserved but
+its Up is delayed, while a fast Up/Down pair inside the hold window can be merged
+into one continuous press. Start near the defaults and use measurement evidence
+from the faulty button before widening either window.
 
 ## Timing clock
 
@@ -85,9 +115,15 @@ The format is deliberately just app arguments plus optional `#` comments:
 --buttons left,right,middle
 --short-ms 20
 --hold-ms 20
+--sound-volume 0.1
 ```
 
 Config loads first and CLI arguments override it.
+
+`--sound-volume` accepts `0` through `1` and is saved like the other settings;
+`0` silences all sounds. `--debug` enables startup, scroll-down, and filter
+diagnostic sounds; without it, normal filtering is silent. `--debug` is a
+command-line switch, not a saved setting.
 
 Recommended save command:
 
@@ -135,6 +171,19 @@ Suggested measurement actions:
 - wheel: **>=1 s** smooth one-direction scrolling at roughly steady speed, then the opposite direction, plus ordinary scroll bursts.
 
 At session end it prints per-button sample counts, Tukey-IQR outlier removal, mean/median/p90/range, conservative cluster analysis, and suggested settings.
+
+Raw-event measurement alerts by sound when it sees a suspected button bounce and
+prints that event's entire terminal line in bold (`--sound-volume 0` mutes it).
+It calls the same debounce functions as filtering, with separate state and no
+input suppression. A short press alone is only a candidate: the returning Down
+within the hold window triggers the alert. Duplicate Downs also trigger alerts.
+Short-press bounce-pair alerts are yellow as well as bold; duplicate-Down alerts
+are bold only. The line also names the reason, including in a plain-text log.
+These warnings mean “the filter would suppress this,” not proof of faulty hardware.
+Measurement uses your saved timing and volume settings; pass timing options to
+override them, or `--no-config` to try the defaults. `--debug` is not needed for
+bounce alerts.
+Pressing Ctrl-C ends the session cleanly and prints the summary collected so far.
 
 If the mouse happens to behave perfectly during the session, the button recommendations may not contain useful chatter calibration data. Do **not** overfit settings to a clean session; rerun measurement when the fault recurs.
 
@@ -234,6 +283,9 @@ make test
 ```
 
 Portable tests cover debounce state transitions, timing inheritance, CLI/config parsing and save/load behavior, IQR/threshold statistics, and missing-wheel-pulse cadence logic.
+
+`make test-measurement` additionally checks measurement alerts and bold markers
+with synthetic CoreGraphics events. It does not intercept input or play audio.
 
 ## Security / audit surface
 

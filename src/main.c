@@ -16,8 +16,6 @@
 #include <string.h>
 #include <unistd.h>
 
-static const bool kEnableScrollDownDebugSound = false;
-
 typedef struct {
     AppOptions options;
     EventTap event_tap;
@@ -39,14 +37,12 @@ static CGEventRef app_event_handler(
     CGEventRef event
 ) {
     App *app = (App *)context;
+    if (app->options.debug && type == kCGEventScrollWheel &&
+        CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis1) < 0) {
+        debounce_sound_play();
+    }
     if (app->options.mode == APP_MODE_MEASURE) {
         measurement_handle(&app->measurement, type, event);
-        return event;
-    }
-    if (kEnableScrollDownDebugSound && type == kCGEventScrollWheel) {
-        if (CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis1) < 0) {
-            debounce_sound_play();
-        }
         return event;
     }
     return debounce_filter_handle(&app->filter, proxy, type, event);
@@ -56,6 +52,8 @@ static void app_tap_reset(void *context) {
     App *app = (App *)context;
     if (app->options.mode == APP_MODE_FILTER) {
         debounce_filter_reset_safely(&app->filter);
+    } else {
+        memset(app->measurement.shadow, 0, sizeof(app->measurement.shadow));
     }
 }
 
@@ -231,21 +229,23 @@ int main(int argc, char **argv) {
     }
 
     CGEventMask mask = mouse_button_event_mask();
-    if (app.options.mode == APP_MODE_MEASURE || kEnableScrollDownDebugSound) {
+    if (app.options.mode == APP_MODE_MEASURE || app.options.debug) {
         mask |= CGEventMaskBit(kCGEventScrollWheel);
     }
 
-    if (app.options.mode == APP_MODE_FILTER) {
+    if (app.options.mode == APP_MODE_MEASURE || app.options.debug) {
         debounce_sound_set_volume(app.options.sound_volume);
-        debounce_sound_play();
+    }
+    if (app.options.mode == APP_MODE_FILTER) {
         debounce_filter_init(
             &app.filter,
             app.options.buttons,
             app.options.timing.short_ms,
             app.options.timing.hold_ms
         );
+        app.filter.debug = app.options.debug;
     } else {
-        measurement_init(&app.measurement, app.options.buttons, app.output);
+        measurement_init(&app.measurement, app.options.buttons, &app.options.timing, app.output);
     }
 
     if (!event_tap_start(
@@ -294,6 +294,7 @@ int main(int argc, char **argv) {
         }
     }
 
+    if (app.options.debug) debounce_sound_play();
     CFRunLoopRun();
     cleanup(&app);
     return 0;

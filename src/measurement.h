@@ -3,6 +3,8 @@
 
 #include "mouse_events.h"
 #include "wheel_analysis.h"
+#include "debounce_logic.h"
+#include "timing_settings.h"
 
 #include <ApplicationServices/ApplicationServices.h>
 #include <stdbool.h>
@@ -13,6 +15,8 @@
 
 typedef struct {
     bool enabled[MOUSE_BUTTON_COUNT];
+    DebounceState shadow[MOUSE_BUTTON_COUNT];
+    TimingSettings timing;
     FILE *out;
     uint64_t first_ns;
     uint64_t last_down_ns[MOUSE_BUTTON_COUNT];
@@ -30,6 +34,7 @@ typedef struct {
 void measurement_init(
     Measurement *measurement,
     const bool enabled[MOUSE_BUTTON_COUNT],
+    const TimingSettings *timing,
     FILE *out
 );
 void measurement_handle(Measurement *measurement, CGEventType type, CGEventRef event);

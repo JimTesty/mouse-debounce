@@ -25,6 +25,16 @@ static void invalid_arguments(void) {
     assert(!options_parse(4, duration, &options));
     duration[3] = "0";
     assert(options_parse(4, duration, &options));
+    assert(!options.debug);
+    char *debug[] = {"test", "--no-config", "--debug", "--sound-volume", "0"};
+    assert(options_parse(5, debug, &options));
+    assert(options.debug && options.sound_volume == 0);
+    debug[4] = "1";
+    assert(options_parse(5, debug, &options));
+    debug[4] = "1.1";
+    assert(!options_parse(5, debug, &options));
+    debug[4] = "nan";
+    assert(!options_parse(5, debug, &options));
 
     bool buttons[MOUSE_BUTTON_COUNT];
     assert(mouse_parse_button_list("left,middle", buttons));
@@ -56,10 +66,12 @@ static void precedence_and_roundtrip(void) {
     assert(options.timing.hold_ms[1] == 30);
     assert(options.timing.hold_ms[2] == 30);
     options.buttons[MOUSE_BUTTON_RIGHT] = false;
+    options.sound_volume = 0.25;
     assert(config_write_settings(path, &options.timing, options.buttons, options.sound_volume));
     AppOptions loaded;
     char *load_args[] = {"test", "--config", path};
     assert(options_parse(3, load_args, &loaded));
+    assert(loaded.sound_volume == 0.25);
     for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) {
         assert(loaded.timing.short_ms[i] == options.timing.short_ms[i]);
         assert(loaded.timing.hold_ms[i] == options.timing.hold_ms[i]);

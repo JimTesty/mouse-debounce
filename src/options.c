@@ -49,7 +49,8 @@ void options_print_usage(const char *argv0) {
         "  --middle-short-ms N / --middle-hold-ms N\n"
         "\n"
         "Sound:\n"
-        "  --sound-volume N   debug tick volume, 0..1 (default 0.1)\n"
+        "  --sound-volume N   alert/debug tick volume, 0..1 (default 0.1; 0 mutes)\n"
+        "  --debug            also play startup, scroll-down and filter diagnostic ticks\n"
         "\n"
         "Unset per-button values inherit the average of explicitly set siblings;\n"
         "if no sibling is set, the default is %.0f/%.0f ms. Later arguments win.\n"
@@ -110,6 +111,8 @@ static bool parse_sequence(
             return false;
         } else if (strcmp(arg, "--filter") == 0) {
             options->mode = APP_MODE_FILTER;
+        } else if (strcmp(arg, "--debug") == 0) {
+            options->debug = true;
         } else if (strcmp(arg, "--measure") == 0) {
             options->mode = APP_MODE_MEASURE;
         } else if (strcmp(arg, "--output") == 0) {

@@ -152,23 +152,49 @@ measure_finalize() {
     trap '' INT TERM HUP
     trap - EXIT
 
-    if [ -f "$MEASURE_PID" ]; then
-        mpid="$(cat "$MEASURE_PID" 2>/dev/null || true)"
-        if [ -n "$mpid" ] && kill -0 "$mpid" 2>/dev/null; then
-            kill -TERM "$mpid" 2>/dev/null || true
-        fi
-    fi
+    # Stop live output before asking the app for its final report. Ctrl-C may
+    # already have stopped tail, so the persistent log is the source of truth.
     if [ -n "${TAIL_PID:-}" ]; then
         kill "$TAIL_PID" 2>/dev/null || true
         wait "$TAIL_PID" 2>/dev/null || true
     fi
+
+    app_still_running=0
+    if [ -f "$MEASURE_PID" ]; then
+        mpid="$(cat "$MEASURE_PID" 2>/dev/null || true)"
+        if [ -n "$mpid" ] && kill -0 "$mpid" 2>/dev/null; then
+            kill -TERM "$mpid" 2>/dev/null || true
+            # SIGTERM follows the same app path as duration expiry: it prints the
+            # summary, flushes the log, removes the pid file, and then exits.
+            i=0
+            while kill -0 "$mpid" 2>/dev/null && [ "$i" -lt 50 ]; do
+                sleep 0.1
+                i=$((i + 1))
+            done
+            if kill -0 "$mpid" 2>/dev/null; then
+                app_still_running=1
+                echo "Measurement app did not exit after SIGTERM; debounce service remains stopped." >&2
+            fi
+        fi
+    fi
+
     if [ -n "${OPEN_PID:-}" ]; then
-        kill "$OPEN_PID" 2>/dev/null || true
+        if [ "$app_still_running" -eq 1 ]; then
+            kill "$OPEN_PID" 2>/dev/null || true
+        fi
         wait "$OPEN_PID" 2>/dev/null || true
     fi
-    rm -f "$MEASURE_PID"
+    if [ "$app_still_running" -eq 0 ]; then
+        rm -f "$MEASURE_PID"
+    fi
 
-    if [ "${WAS_RUNNING:-0}" -eq 1 ]; then
+    # Replay only the final report from the completed log. This is reliable even
+    # when Ctrl-C reached tail before the app flushed its summary.
+    if [ "$app_still_running" -eq 0 ] && [ -f "$MEASURE_LOG" ]; then
+        sed -n '/^Measurement summary$/,$p' "$MEASURE_LOG"
+    fi
+
+    if [ "${WAS_RUNNING:-0}" -eq 1 ] && [ "$app_still_running" -eq 0 ]; then
         start_quiet
         echo "Restored debounce service."
     fi
@@ -212,7 +238,7 @@ measure_session() {
     TAIL_PID=$!
 
     open -n -W "$APP" --args \
-        --no-config --measure --buttons left,right,middle \
+        --measure --buttons left,right,middle \
         --duration "$duration" --output "$MEASURE_LOG" --pid-file "$MEASURE_PID" "$@" &
     OPEN_PID=$!
 
