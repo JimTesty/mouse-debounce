@@ -163,8 +163,9 @@ save `--short-ms 0` along with your chosen hold window.
 
 `--sound-volume` accepts `0` through `1` and is saved like the other settings;
 `0` silences all sounds. `--debug` enables startup, scroll-down, and filter
-diagnostic sounds; without it, normal filtering is silent. `--debug` is a
-command-line switch, not a saved setting.
+diagnostic sounds; without it, normal filtering is silent. The debug setting is
+saved too: use `tools/mousedebouncectl save --debug` to enable it across restarts,
+and `tools/mousedebouncectl save --no-debug` to disable it later.
 
 Recommended save command:
 
@@ -172,7 +173,7 @@ Recommended save command:
 tools/mousedebouncectl save --short-ms 0 --hold-ms 70
 ```
 
-This calls `--save-config-and-exit`, so no extra long-running process remains. If the launchd service was running, the controller restarts it so the new config takes effect.
+This calls `--save-config-and-exit` and prints the saved config file, so no extra long-running process remains. If the launchd service was running, the controller restarts it so the new config takes effect.
 
 View saved settings:
 

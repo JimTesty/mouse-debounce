@@ -86,16 +86,27 @@ static void precedence_and_roundtrip(void) {
     assert(options.timing.hold_ms[2] == 30);
     options.buttons[MOUSE_BUTTON_RIGHT] = false;
     options.sound_volume = 0.25;
-    assert(config_write_settings(path, &options.timing, options.buttons, options.sound_volume));
+    options.debug = true;
+    assert(config_write_settings(path, &options.timing, options.buttons, options.sound_volume, options.debug));
     AppOptions loaded;
     char *load_args[] = {"test", "--config", path};
     assert(options_parse(3, load_args, &loaded));
     assert(loaded.sound_volume == 0.25);
+    assert(loaded.debug);
     for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) {
         assert(loaded.timing.short_ms[i] == options.timing.short_ms[i]);
         assert(loaded.timing.hold_ms[i] == options.timing.hold_ms[i]);
         assert(loaded.buttons[i] == options.buttons[i]);
     }
+    char *disable[] = {"test", "--config", path, "--no-debug"};
+    assert(options_parse(4, disable, &loaded));
+    assert(!loaded.debug);
+    assert(config_write_settings(path, &loaded.timing, loaded.buttons, loaded.sound_volume, loaded.debug));
+    assert(options_parse(3, load_args, &loaded));
+    assert(!loaded.debug);
+    char *enable[] = {"test", "--config", path, "--debug"};
+    assert(options_parse(4, enable, &loaded));
+    assert(loaded.debug);
     char *ignore[] = {"test", "--config", path, "--no-config"};
     assert(options_parse(4, ignore, &loaded));
     assert(loaded.timing.short_ms[0] == DEFAULT_SHORT_MS);

@@ -22,7 +22,8 @@ bool config_write_settings(
     const char *path,
     const TimingSettings *timing,
     const bool buttons[MOUSE_BUTTON_COUNT],
-    double sound_volume
+    double sound_volume,
+    bool debug
 );
 
 #endif

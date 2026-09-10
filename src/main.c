@@ -203,14 +203,25 @@ int main(int argc, char **argv) {
                 app.options.config_path,
                 &app.options.timing,
                 app.options.buttons,
-                app.options.sound_volume)) {
+                app.options.sound_volume,
+                app.options.debug)) {
             fprintf(app.output, "Could not save config: %s\n", app.options.config_path);
             cleanup(&app);
             return 1;
         }
         fprintf(app.output, "Saved config: %s\n", app.options.config_path);
+        FILE *saved = fopen(app.options.config_path, "r");
+        if (saved == NULL) {
+            fprintf(app.output, "Could not read back saved config.\n");
+            cleanup(&app);
+            return 1;
+        }
+        int ch;
+        while ((ch = fgetc(saved)) != EOF) fputc(ch, app.output);
+        bool read_ok = !ferror(saved);
+        fclose(saved);
         cleanup(&app);
-        return 0;
+        return read_ok ? 0 : 1;
     }
 
     if (!write_pid_file(&app)) {
