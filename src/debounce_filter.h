@@ -30,11 +30,15 @@ void debounce_filter_init(
     const double short_ms[MOUSE_BUTTON_COUNT],
     const double hold_ms[MOUSE_BUTTON_COUNT]
 );
+bool debounce_filter_is_owned_event(CGEventRef event);
+
+/* Reports the decision for logging without running bounce detection again. */
 CGEventRef debounce_filter_handle(
     DebounceFilter *filter,
     CGEventTapProxy proxy,
     CGEventType type,
-    CGEventRef event
+    CGEventRef event,
+    DebounceAction *action_out
 );
 void debounce_filter_flush(DebounceFilter *filter);
 void debounce_filter_reset_safely(DebounceFilter *filter);

@@ -34,6 +34,14 @@ static void invalid_arguments(void) {
     char *debug[] = {"test", "--no-config", "--debug", "--sound-volume", "0"};
     assert(options_parse(5, debug, &options));
     assert(options.debug && options.sound_volume == 0);
+    assert(!options.debug_wheel && !options.log);
+    char *new_flags[] = {"test", "--no-config", "--debug-wheel", "--log"};
+    assert(options_parse(4, new_flags, &options));
+    assert(options.debug_wheel && options.log);
+    char *no_debug_wheel[] = {"test", "--no-config", "--no-debug-wheel"};
+    assert(!options_parse(3, no_debug_wheel, &options));
+    char *no_log[] = {"test", "--no-config", "--no-log"};
+    assert(!options_parse(3, no_log, &options));
     debug[4] = "1";
     assert(options_parse(5, debug, &options));
     debug[4] = "1.1";
@@ -87,12 +95,17 @@ static void precedence_and_roundtrip(void) {
     options.buttons[MOUSE_BUTTON_RIGHT] = false;
     options.sound_volume = 0.25;
     options.debug = true;
-    assert(config_write_settings(path, &options.timing, options.buttons, options.sound_volume, options.debug));
+    options.debug_wheel = true;
+    options.log = true;
+    assert(config_write_settings(path, &options.timing, options.buttons, options.sound_volume,
+                                 options.debug, options.debug_wheel, options.log));
     AppOptions loaded;
     char *load_args[] = {"test", "--config", path};
     assert(options_parse(3, load_args, &loaded));
     assert(loaded.sound_volume == 0.25);
     assert(loaded.debug);
+    assert(loaded.debug_wheel);
+    assert(loaded.log);
     for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) {
         assert(loaded.timing.short_ms[i] == options.timing.short_ms[i]);
         assert(loaded.timing.hold_ms[i] == options.timing.hold_ms[i]);
@@ -101,9 +114,17 @@ static void precedence_and_roundtrip(void) {
     char *disable[] = {"test", "--config", path, "--no-debug"};
     assert(options_parse(4, disable, &loaded));
     assert(!loaded.debug);
-    assert(config_write_settings(path, &loaded.timing, loaded.buttons, loaded.sound_volume, loaded.debug));
+    loaded.debug_wheel = false;
+    loaded.log = false;
+    assert(config_write_settings(path, &loaded.timing, loaded.buttons, loaded.sound_volume,
+                                 loaded.debug, loaded.debug_wheel, loaded.log));
     assert(options_parse(3, load_args, &loaded));
     assert(!loaded.debug);
+    assert(!loaded.debug_wheel);
+    assert(!loaded.log);
+    char *enable_new_flags[] = {"test", "--config", path, "--debug-wheel", "--log"};
+    assert(options_parse(5, enable_new_flags, &loaded));
+    assert(loaded.debug_wheel && loaded.log);
     char *enable[] = {"test", "--config", path, "--debug"};
     assert(options_parse(4, enable, &loaded));
     assert(loaded.debug);

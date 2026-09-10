@@ -88,7 +88,9 @@ bool config_write_settings(
     const TimingSettings *timing,
     const bool buttons[MOUSE_BUTTON_COUNT],
     double sound_volume,
-    bool debug
+    bool debug,
+    bool debug_wheel,
+    bool log
 ) {
     if (!ensure_config_directory(path)) return false;
     FILE *f = fopen(path, "w");
@@ -99,6 +101,8 @@ bool config_write_settings(
     write_buttons(f, buttons);
     fprintf(f, "--sound-volume %.3g\n", sound_volume);
     fprintf(f, "%s\n", debug ? "--debug" : "--no-debug");
+    if (debug_wheel) fprintf(f, "--debug-wheel\n");
+    if (log) fprintf(f, "--log\n");
 
     if (all_equal(timing->short_ms)) {
         fprintf(f, "--short-ms %.3g\n", timing->short_ms[0]);

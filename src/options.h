@@ -15,6 +15,8 @@ typedef enum {
 typedef struct {
     AppMode mode;
     bool debug;
+    bool debug_wheel;
+    bool log;
     TimingDraft timing_draft;
     TimingSettings timing;
     bool buttons[MOUSE_BUTTON_COUNT];

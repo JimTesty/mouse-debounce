@@ -28,6 +28,7 @@ SOURCES := \
 	src/debounce_filter.c \
 	src/measurement.c \
 	src/event_tap.c \
+	src/event_log.c \
 	src/permissions.c \
 	src/signal_bridge.c
 OBJC_SOURCES := src/debounce_sound.m
@@ -40,7 +41,14 @@ FRAMEWORKS := -framework ApplicationServices -framework CoreFoundation -framewor
 all: app test
 
 # Synthetic CoreGraphics events only; no event tap, Accessibility access, or audio.
-.PHONY: test-measurement
+.PHONY: test-measurement test-event-log
+test-event-log: $(BUILD)/test-event-log
+	$(BUILD)/test-event-log
+
+$(BUILD)/test-event-log: tests/test_event_log.c src/event_log.c src/event_log.h src/config_file.h src/monotonic_clock.h src/debounce_filter.c src/debounce_filter.h src/debounce_logic.c src/debounce_logic.h src/mouse_events.c src/mouse_events.h
+	mkdir -p "$(BUILD)"
+	$(CC) $(CFLAGS) -Isrc tests/test_event_log.c src/event_log.c src/debounce_filter.c src/debounce_logic.c src/mouse_events.c -o $@ -framework ApplicationServices -framework CoreFoundation
+
 test-measurement: $(BUILD)/test-measurement
 	$(BUILD)/test-measurement
 

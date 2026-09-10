@@ -80,15 +80,21 @@ void debounce_filter_init(
     }
 }
 
+bool debounce_filter_is_owned_event(CGEventRef event) {
+    return CGEventGetIntegerValueField(event, kCGEventSourceUserData) == OWN_EVENT_MAGIC;
+}
+
 CGEventRef debounce_filter_handle(
     DebounceFilter *filter,
     CGEventTapProxy proxy,
     CGEventType type,
-    CGEventRef event
+    CGEventRef event,
+    DebounceAction *action_out
 ) {
     (void)proxy;
+    *action_out = DEBOUNCE_PASS;
 
-    if (CGEventGetIntegerValueField(event, kCGEventSourceUserData) == OWN_EVENT_MAGIC) {
+    if (debounce_filter_is_owned_event(event)) {
         return event;
     }
 
@@ -108,6 +114,7 @@ CGEventRef debounce_filter_handle(
             action = debounce_on_down(&runtime->logic, now_ns);
         }
 
+        *action_out = action;
         if (action == DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN) {
             if (filter->debug) debounce_sound_play();
             discard_pending_up(runtime);
@@ -123,6 +130,7 @@ CGEventRef debounce_filter_handle(
     DebounceAction action = debounce_on_up(
         &runtime->logic, now_ns, filter->short_ns[mouse.button], filter->hold_ns[mouse.button]
     );
+    *action_out = action;
     if (action != DEBOUNCE_HOLD_UP) return event;
 
     discard_pending_up(runtime);
@@ -130,12 +138,14 @@ CGEventRef debounce_filter_handle(
     if (runtime->pending_up == NULL) {
         /* Allocation failure: never eat an Up that we cannot later restore. */
         debounce_pending_emitted(&runtime->logic);
+        *action_out = DEBOUNCE_PASS;
         return event;
     }
 
     if (!schedule_timer(filter, mouse.button)) {
         /* Timer failure: fail open immediately. */
         post_owned_up(runtime);
+        *action_out = DEBOUNCE_PASS;
     }
     return NULL;
 }

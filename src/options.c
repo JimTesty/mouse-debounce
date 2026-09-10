@@ -42,8 +42,13 @@ void options_print_usage(const char *argv0) {
         "\n"
         "Sound:\n"
         "  --sound-volume N   alert/debug tick volume, 0..1 (default 0.1; 0 mutes)\n"
-        "  --debug            also play startup, scroll-down and filter diagnostic ticks\n"
+        "  --debug            play startup and filter diagnostic ticks\n"
         "  --no-debug         disable diagnostic ticks (debug setting is saved)\n"
+        "  --debug-wheel      play a tick on wheel-down events (saved independently)\n"
+        "\n"
+        "Logging:\n"
+        "  --log              append raw button/wheel events to events.log beside config\n"
+        "                     filter mode only; saved; no movement logging\n"
         "\n"
         "Unset per-button values inherit the average of explicitly set siblings;\n"
         "if no sibling is set, the default is %.0f/%.0f ms. Later arguments win.\n"
@@ -109,6 +114,10 @@ static bool parse_sequence(
             options->debug = true;
         } else if (strcmp(arg, "--no-debug") == 0) {
             options->debug = false;
+        } else if (strcmp(arg, "--debug-wheel") == 0) {
+            options->debug_wheel = true;
+        } else if (strcmp(arg, "--log") == 0) {
+            options->log = true;
         } else if (config_mode) {
             return false;
         } else if (strcmp(arg, "--filter") == 0) {

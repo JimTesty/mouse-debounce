@@ -163,10 +163,14 @@ the default does not override them. To repair long-hold glitches, explicitly
 save `--short-ms 0` along with your chosen hold window.
 
 `--sound-volume` accepts `0` through `1` and is saved like the other settings;
-`0` silences all sounds. `--debug` enables startup, scroll-down, and filter
-diagnostic sounds; without it, normal filtering is silent. The debug setting is
-saved too: use `tools/mousedebouncectl save --debug` to enable it across restarts,
-and `tools/mousedebouncectl save --no-debug` to disable it later.
+`0` silences all sounds. `--debug` enables startup and filter diagnostic sounds.
+`--debug-wheel` independently enables a sound on each wheel-down event; it does
+not require `--debug`. With neither switch, normal filtering is silent. Both
+settings persist: use `tools/mousedebouncectl save --debug` to enable filter
+diagnostics across restarts, and `tools/mousedebouncectl save --no-debug` to
+disable them later. To disable saved
+wheel sounds, remove the `--debug-wheel` line from the config and restart the
+service. There is no `--no-debug-wheel`; `--no-debug` does not turn off wheel sounds.
 
 Recommended save command:
 
@@ -181,6 +185,35 @@ View saved settings:
 ```sh
 tools/mousedebouncectl config
 ```
+
+## Event logging
+
+Use `tools/mousedebouncectl save --log` to enable logging during normal filtering.
+Button Down/Up events (including extra buttons) and scrolling are appended to
+`events.log` in the config folder:
+
+```text
+~/Library/Application Support/MouseDebounce/events.log
+```
+
+With `--config PATH`, the log goes beside that config file. Movement and dragging
+are not logged. All raw button events are logged, even for buttons not enabled
+for filtering. Entries include suppressed events but exclude releases replayed
+by the filter. A suppressed Down gets a same-line `<<< suspected bounce` note
+from the filter's actual decision: either an Up/Down pair within `hold-ms` or a
+duplicate Down. The earlier Up remains in the log; it cannot be identified as
+part of a pair until the returning Down arrives. These notes describe the
+filter's classification, not proof of a hardware glitch.
+
+Each event starts with local date and time to hundredths of a second, such as
+`2026-09-10 17:24:56.78`.
+A `-----` line precedes a Down when more than one second has passed since the
+previous logged event (button or wheel). Movement does not reset this interval.
+
+`--log` is saved and has no effect in `measure` mode. Remove its line from the
+config and restart the service to disable it. Logs are not rotated automatically;
+for long sessions, check disk usage and remove unneeded logs after stopping the
+service. Logging records input activity and adds file-writing overhead.
 
 ## Measurement
 
@@ -320,6 +353,7 @@ tools/mousedebouncectl logs
 | `src/mouse_events.*` | CoreGraphics event decoding/native timestamps |
 | `src/config_file.*` | Tiny `config.args` reader/writer |
 | `src/event_tap.*` | Minimal `CGEventTap` lifecycle |
+| `src/event_log.*` | Append-only raw button/wheel logging with local timestamps |
 | `src/permissions.*` | Accessibility permission request/check |
 | `src/signal_bridge.*` | SIGINT/SIGTERM -> run-loop shutdown |
 | `src/options.*` | CLI/config parsing |
@@ -339,6 +373,8 @@ Portable tests cover debounce state transitions, timing inheritance, CLI/config 
 
 `make test-measurement` additionally checks measurement alerts and bold markers
 with synthetic CoreGraphics events. It does not intercept input or play audio.
+`make test-event-log` checks log formatting, idle separators, and appending using
+synthetic events and temporary files, without accessing your saved config.
 
 ## Security / audit surface
 
@@ -347,7 +383,7 @@ The current source contains **no networking implementation** and no updater, plu
 The app itself:
 
 - creates one CoreGraphics event tap;
-- reads/writes only its explicit config, measurement output, and optional PID file;
+- reads/writes only its explicit config, measurement output, optional event log, and optional PID file;
 - suppresses/reposts mouse-button events only as required by the debounce state machine;
 - measurement observes events and writes text output.
 

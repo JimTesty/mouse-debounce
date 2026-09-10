@@ -2,6 +2,7 @@
 #include "debounce_filter.h"
 #include "debounce_sound.h"
 #include "event_tap.h"
+#include "event_log.h"
 #include "measurement.h"
 #include "mouse_events.h"
 #include "options.h"
@@ -21,6 +22,7 @@ typedef struct {
     EventTap event_tap;
     DebounceFilter filter;
     Measurement measurement;
+    EventLog event_log;
     SignalBridge signals;
     FILE *output;
     CFRunLoopTimerRef duration_timer;
@@ -37,7 +39,9 @@ static CGEventRef app_event_handler(
     CGEventRef event
 ) {
     App *app = (App *)context;
-    if (app->options.debug && type == kCGEventScrollWheel &&
+    /* Reposted releases aren't new input; don't log or analyze them twice. */
+    if (debounce_filter_is_owned_event(event)) return event;
+    if (app->options.debug_wheel && type == kCGEventScrollWheel &&
         CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis1) < 0) {
         debounce_sound_play();
     }
@@ -45,7 +49,13 @@ static CGEventRef app_event_handler(
         measurement_handle(&app->measurement, type, event);
         return event;
     }
-    return debounce_filter_handle(&app->filter, proxy, type, event);
+    DebounceAction action;
+    CGEventRef filtered = debounce_filter_handle(&app->filter, proxy, type, event, &action);
+    if (!event_log_handle(&app->event_log, type, event, action)) {
+        fprintf(app->output, "Could not write event log; logging disabled for this run.\n");
+        event_log_close(&app->event_log);
+    }
+    return filtered;
 }
 
 static void app_tap_reset(void *context) {
@@ -169,6 +179,7 @@ static void cleanup(App *app) {
         else debounce_filter_destroy(&app->filter);
     }
 
+    event_log_close(&app->event_log);
     if (app->output != NULL && app->output != stdout) {
         fclose(app->output);
         app->output = NULL;
@@ -204,7 +215,9 @@ int main(int argc, char **argv) {
                 &app.options.timing,
                 app.options.buttons,
                 app.options.sound_volume,
-                app.options.debug)) {
+                app.options.debug,
+                app.options.debug_wheel,
+                app.options.log)) {
             fprintf(app.output, "Could not save config: %s\n", app.options.config_path);
             cleanup(&app);
             return 1;
@@ -239,12 +252,20 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    if (app.options.mode == APP_MODE_FILTER && app.options.log &&
+        !event_log_open(&app.event_log, app.options.config_path)) {
+        perror("Could not open events.log beside config file");
+        cleanup(&app);
+        return 1;
+    }
+
     CGEventMask mask = mouse_button_event_mask();
-    if (app.options.mode == APP_MODE_MEASURE || app.options.debug) {
+    if (app.options.mode == APP_MODE_MEASURE || app.options.debug_wheel ||
+        (app.options.mode == APP_MODE_FILTER && app.options.log)) {
         mask |= CGEventMaskBit(kCGEventScrollWheel);
     }
 
-    if (app.options.mode == APP_MODE_MEASURE || app.options.debug) {
+    if (app.options.mode == APP_MODE_MEASURE || app.options.debug || app.options.debug_wheel) {
         debounce_sound_set_volume(app.options.sound_volume);
     }
     if (app.options.mode == APP_MODE_FILTER) {

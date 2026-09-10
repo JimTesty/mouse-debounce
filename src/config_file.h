@@ -23,7 +23,9 @@ bool config_write_settings(
     const TimingSettings *timing,
     const bool buttons[MOUSE_BUTTON_COUNT],
     double sound_volume,
-    bool debug
+    bool debug,
+    bool debug_wheel,
+    bool log
 );
 
 #endif
