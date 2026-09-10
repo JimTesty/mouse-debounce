@@ -28,6 +28,18 @@ When the Accessibility pane opens, enable **Mouse Debounce** before starting the
 
 Development builds use ad-hoc signing by default. To reduce repeated Accessibility approval prompts, see [Stable local code signing](docs/local-signing.md).
 
+## Two common glitch patterns
+
+1. **Chatter around the initial press.** You press once, but the switch rapidly
+   reports `Down -> Up -> Down`. The extra Up/Down pair can look like a second click.
+2. **A brief release during a hold or drag.** You are still pressing, possibly
+   lightly, but the switch momentarily reports Up and then Down, interrupting the
+   hold or drag. For example, after a 993.6 ms press it reports Up, followed by
+   Down 23.9 ms later.
+
+In both cases, the problem is an unintended release followed by a quick return
+to the pressed state. The filter repairs that pair as described below.
+
 ## Debounce algorithm
 
 The main setting is `hold-ms`: how long to wait after an **Up** before delivering
@@ -36,6 +48,8 @@ another Down arrives before that wait ends, the filter discards the withheld Up
 and returning Down. The application sees one uninterrupted press. Otherwise,
 the Up is delivered when the wait ends. A Down at or after the deadline starts
 a new press. Duplicate Downs while already held are also suppressed.
+There is no debounce delay on Down events: they either pass immediately or are
+discarded as part of a bounce pair or as duplicates. Only Up events are delayed.
 
 `short-ms` is an optional restriction on which releases get that wait:
 
@@ -50,18 +64,10 @@ Thus `short-ms=0` does **not** disable debouncing or set the release delay to ze
 when the utility starts with the button already held) passes through to avoid
 leaving the application stuck in a pressed state.
 
-### Two common glitch patterns
-
-1. **Chatter around the initial press.** You press once, but the switch rapidly
-   reports `Down -> Up -> Down`. An extra Up/Down pair can look like a second click.
-   The filter holds the early Up and discards the pair if Down returns within
-   `hold-ms`. Both modes can repair this; with positive `short-ms`, the initial
-   Down-to-Up duration must also be below that threshold.
-2. **A brief release during a hold or drag.** You are still pressing, possibly
-   lightly, but the switch momentarily reports Up and then Down. For example,
-   after a 993.6 ms press it reports Up, followed by Down 23.9 ms later. Use
-   `short-ms=0` and a `hold-ms` longer than the glitch gap. A setting such as
-   `short-ms=50` misses this case because the preceding press lasted over 50 ms.
+For initial-press chatter, either mode can repair the pair, provided the Up gets
+the hold window. For glitches during long holds, use `short-ms=0` and a `hold-ms`
+longer than the glitch gap. `short-ms=50` misses the 993.6 ms example because the
+preceding press lasted over 50 ms.
 
 For the second case, with `--short-ms 0 --hold-ms 70`:
 
@@ -220,6 +226,12 @@ override them, or `--no-config` to try the defaults. `--debug` is not needed for
 bounce alerts.
 Suggested settings estimate `hold-ms` from release-to-Down gaps and preserve your
 configured `short-ms`; calibration does not silently switch the detection mode.
+
+TODO: Rework the settings-suggestion algorithm. Timing clusters alone cannot
+reliably distinguish real re-clicks from switch glitches, and a clean session
+does not establish a safe debounce window. Consider guided, user-labelled tests
+and withholding recommendations when the evidence is insufficient. Until then,
+treat the suggested values as experimental, not calibrated settings.
 Pressing Ctrl-C ends the session cleanly and prints the summary collected so far.
 
 If the mouse happens to behave perfectly during the session, the button recommendations may not contain useful chatter calibration data. Do **not** overfit settings to a clean session; rerun measurement when the fault recurs.
