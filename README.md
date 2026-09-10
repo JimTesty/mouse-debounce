@@ -168,9 +168,9 @@ save `--short-ms 0` along with your chosen hold window.
 not require `--debug`. With neither switch, normal filtering is silent. Both
 settings persist: use `tools/mousedebouncectl save --debug` to enable filter
 diagnostics across restarts, and `tools/mousedebouncectl save --no-debug` to
-disable them later. To disable saved
-wheel sounds, remove the `--debug-wheel` line from the config and restart the
-service. There is no `--no-debug-wheel`; `--no-debug` does not turn off wheel sounds.
+disable them later. Use `tools/mousedebouncectl save --no-debug-wheel` to disable
+saved wheel sounds; `--no-debug` does not turn off wheel sounds. Disabled flags
+are omitted from the saved config, rather than written as `--no-*` options.
 
 Recommended save command:
 
@@ -207,15 +207,17 @@ filter's classification, not proof of a hardware glitch.
 
 Button entries end with elapsed time since that same button's previous raw event,
 such as ` (45.67ms)`, before any glitch note. Other buttons and scrolling do not
-reset this timer. A button's first event in each run has no elapsed time.
+reset this timer. A button's first event in each run has no elapsed time and is
+preceded by `-----`, whether it is a Down or an Up.
 
 Each event starts with local date and time to hundredths of a second, such as
 `2026-09-10 17:24:56.78`.
 A `-----` line precedes a Down when more than one second has passed since the
 previous logged event (button or wheel). Movement does not reset this interval.
+The first logged event in a run also gets a separator, even if it is scrolling.
 
-`--log` is saved and has no effect in `measure` mode. Remove its line from the
-config and restart the service to disable it. Logs are not rotated automatically;
+`--log` is saved and has no effect in `measure` mode. Use
+`tools/mousedebouncectl save --no-log` to disable it. Logs are not rotated automatically;
 for long sessions, check disk usage and remove unneeded logs after stopping the
 service. Logging records input activity and adds file-writing overhead.
 

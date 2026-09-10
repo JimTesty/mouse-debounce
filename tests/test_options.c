@@ -39,9 +39,11 @@ static void invalid_arguments(void) {
     assert(options_parse(4, new_flags, &options));
     assert(options.debug_wheel && options.log);
     char *no_debug_wheel[] = {"test", "--no-config", "--no-debug-wheel"};
-    assert(!options_parse(3, no_debug_wheel, &options));
+    assert(options_parse(3, no_debug_wheel, &options));
+    assert(!options.debug_wheel);
     char *no_log[] = {"test", "--no-config", "--no-log"};
-    assert(!options_parse(3, no_log, &options));
+    assert(options_parse(3, no_log, &options));
+    assert(!options.log);
     debug[4] = "1";
     assert(options_parse(5, debug, &options));
     debug[4] = "1.1";
@@ -111,13 +113,19 @@ static void precedence_and_roundtrip(void) {
         assert(loaded.timing.hold_ms[i] == options.timing.hold_ms[i]);
         assert(loaded.buttons[i] == options.buttons[i]);
     }
-    char *disable[] = {"test", "--config", path, "--no-debug"};
-    assert(options_parse(4, disable, &loaded));
+    char *disable[] = {"test", "--config", path, "--no-debug", "--no-debug-wheel", "--no-log"};
+    assert(options_parse(6, disable, &loaded));
     assert(!loaded.debug);
-    loaded.debug_wheel = false;
-    loaded.log = false;
+    assert(!loaded.debug_wheel && !loaded.log);
     assert(config_write_settings(path, &loaded.timing, loaded.buttons, loaded.sound_volume,
                                  loaded.debug, loaded.debug_wheel, loaded.log));
+    ConfigTokens saved;
+    assert(config_load_tokens(path, &saved));
+    for (int i = 0; i < saved.count; ++i) {
+        assert(strstr(saved.tokens[i], "debug") == NULL);
+        assert(strcmp(saved.tokens[i], "--log") != 0);
+        assert(strcmp(saved.tokens[i], "--no-log") != 0);
+    }
     assert(options_parse(3, load_args, &loaded));
     assert(!loaded.debug);
     assert(!loaded.debug_wheel);

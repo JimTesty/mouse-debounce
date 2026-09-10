@@ -50,6 +50,16 @@ bool event_log_handle(EventLog *log, CGEventType type, CGEventRef event, Debounc
               type == kCGEventOtherMouseUp;
     if (!down && !up && type != kCGEventScrollWheel) return true;
 
+    int64_t button = -1;
+    EventLogButton *previous = NULL;
+    if (down || up) {
+        button = type == kCGEventLeftMouseDown || type == kCGEventLeftMouseUp ? 0 :
+            type == kCGEventRightMouseDown || type == kCGEventRightMouseUp ? 1 :
+            CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber);
+        previous = log->buttons;
+        while (previous != NULL && previous->number != button) previous = previous->next;
+    }
+
     struct timeval wall;
     if (gettimeofday(&wall, NULL) != 0) return false;
     struct tm local;
@@ -59,7 +69,8 @@ bool event_log_handle(EventLog *log, CGEventType type, CGEventRef event, Debounc
 
     /* Use uptime for gaps so changes to the wall clock don't split groups. */
     uint64_t now = monotonic_now_ns();
-    if (down && log->has_event && now - log->last_event_ns > UINT64_C(1000000000)) {
+    if (!log->has_event || ((down || up) && previous == NULL) ||
+        (down && now - log->last_event_ns > UINT64_C(1000000000))) {
         fputs("-----\n", log->file);
     }
     log->last_event_ns = now;
@@ -71,16 +82,11 @@ bool event_log_handle(EventLog *log, CGEventType type, CGEventRef event, Debounc
             CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis2),
             CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis3));
     } else {
-        int64_t button = type == kCGEventLeftMouseDown || type == kCGEventLeftMouseUp ? 0 :
-            type == kCGEventRightMouseDown || type == kCGEventRightMouseUp ? 1 :
-            CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber);
         const char *name = button == 0 ? "LEFT" : button == 1 ? "RIGHT" :
                            button == 2 ? "MIDDLE" : "OTHER";
         fprintf(log->file, "%-6s %-4s button=%" PRId64 " clickState=%" PRId64,
             name, down ? "down" : "up", button,
             CGEventGetIntegerValueField(event, kCGMouseEventClickState));
-        EventLogButton *previous = log->buttons;
-        while (previous != NULL && previous->number != button) previous = previous->next;
         if (previous != NULL) {
             fprintf(log->file, " (%.2fms)", (double)(now - previous->last_event_ns) / 1e6);
         } else {

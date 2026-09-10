@@ -45,10 +45,12 @@ void options_print_usage(const char *argv0) {
         "  --debug            play startup and filter diagnostic ticks\n"
         "  --no-debug         disable diagnostic ticks (debug setting is saved)\n"
         "  --debug-wheel      play a tick on wheel-down events (saved independently)\n"
+        "  --no-debug-wheel   disable wheel-down ticks\n"
         "\n"
         "Logging:\n"
         "  --log              append raw button/wheel events to events.log beside config\n"
         "                     filter mode only; saved; no movement logging\n"
+        "  --no-log           disable event logging\n"
         "\n"
         "Unset per-button values inherit the average of explicitly set siblings;\n"
         "if no sibling is set, the default is %.0f/%.0f ms. Later arguments win.\n"
@@ -116,8 +118,12 @@ static bool parse_sequence(
             options->debug = false;
         } else if (strcmp(arg, "--debug-wheel") == 0) {
             options->debug_wheel = true;
+        } else if (strcmp(arg, "--no-debug-wheel") == 0) {
+            options->debug_wheel = false;
         } else if (strcmp(arg, "--log") == 0) {
             options->log = true;
+        } else if (strcmp(arg, "--no-log") == 0) {
+            options->log = false;
         } else if (config_mode) {
             return false;
         } else if (strcmp(arg, "--filter") == 0) {
