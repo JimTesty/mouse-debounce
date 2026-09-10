@@ -69,7 +69,7 @@ bool event_log_handle(EventLog *log, CGEventType type, CGEventRef event, Debounc
 
     /* Use uptime for gaps so changes to the wall clock don't split groups. */
     uint64_t now = monotonic_now_ns();
-    if (!log->has_event || ((down || up) && previous == NULL) ||
+    if (!log->has_event ||
         (down && now - log->last_event_ns > UINT64_C(1000000000))) {
         fputs("-----\n", log->file);
     }

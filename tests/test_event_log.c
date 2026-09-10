@@ -50,7 +50,7 @@ static void filter_annotations(void) {
     int lines = 0, notes = 0;
     while (fgets(line, sizeof(line), log.file) != NULL) {
         if (strcmp(line, "-----\n") == 0) {
-            assert(lines == 0 || lines == 4);
+            assert(lines == 0);
             continue;
         }
         if (strstr(line, "<<< suspected bounce") != NULL) notes++;
@@ -107,7 +107,7 @@ int main(void) {
     bool saw_wheel = false, saw_other = false;
     while (fgets(line, sizeof(line), file) != NULL) {
         if (strcmp(line, "-----\n") == 0) {
-            assert(events == 0 || events == 3 || events == 5 || events == 7 || events == 8);
+            assert(events == 0 || events == 7 || events == 8);
             separators++;
             continue;
         }
@@ -131,7 +131,7 @@ int main(void) {
         }
         events++;
     }
-    assert(events == 9 && separators == 5 && saw_wheel && saw_other);
+    assert(events == 9 && separators == 3 && saw_wheel && saw_other);
     assert(!ferror(file));
     fclose(file);
     assert(unlink(path) == 0);
