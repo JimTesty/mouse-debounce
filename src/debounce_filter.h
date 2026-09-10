@@ -18,7 +18,8 @@ typedef struct {
 typedef struct {
     bool enabled[MOUSE_BUTTON_COUNT];
     bool debug;
-    uint64_t short_ns[MOUSE_BUTTON_COUNT];
+    uint64_t short0_ns[MOUSE_BUTTON_COUNT];
+    uint64_t hold0_ns[MOUSE_BUTTON_COUNT];
     uint64_t hold_ns[MOUSE_BUTTON_COUNT];
     DebounceButtonRuntime button[MOUSE_BUTTON_COUNT];
 } DebounceFilter;
@@ -27,7 +28,8 @@ typedef struct {
 void debounce_filter_init(
     DebounceFilter *filter,
     const bool enabled[MOUSE_BUTTON_COUNT],
-    const double short_ms[MOUSE_BUTTON_COUNT],
+    const double short0_ms[MOUSE_BUTTON_COUNT],
+    const double hold0_ms[MOUSE_BUTTON_COUNT],
     const double hold_ms[MOUSE_BUTTON_COUNT]
 );
 bool debounce_filter_is_owned_event(CGEventRef event);

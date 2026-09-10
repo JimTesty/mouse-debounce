@@ -24,7 +24,8 @@ DebounceAction debounce_on_down(DebounceState *state, uint64_t now_ns);
 DebounceAction debounce_on_up(
     DebounceState *state,
     uint64_t now_ns,
-    uint64_t short_ns,
+    uint64_t short0_ns,
+    uint64_t hold0_ns,
     uint64_t hold_ns
 );
 void debounce_pending_emitted(DebounceState *state);

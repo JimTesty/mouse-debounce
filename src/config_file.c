@@ -104,12 +104,21 @@ bool config_write_settings(
     if (debug_wheel) fprintf(f, "--debug-wheel\n");
     if (log) fprintf(f, "--log\n");
 
-    if (all_equal(timing->short_ms)) {
-        fprintf(f, "--short-ms %.3g\n", timing->short_ms[0]);
+    if (all_equal(timing->short0_ms)) {
+        fprintf(f, "--short0-ms %.3g\n", timing->short0_ms[0]);
     } else {
         for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) {
-            fprintf(f, "--%s-short-ms %.3g\n",
-                mouse_button_cli_name((MouseButton)i), timing->short_ms[i]);
+            fprintf(f, "--%s-short0-ms %.3g\n",
+                mouse_button_cli_name((MouseButton)i), timing->short0_ms[i]);
+        }
+    }
+
+    if (all_equal(timing->hold0_ms)) {
+        fprintf(f, "--hold0-ms %.3g\n", timing->hold0_ms[0]);
+    } else {
+        for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) {
+            fprintf(f, "--%s-hold0-ms %.3g\n",
+                mouse_button_cli_name((MouseButton)i), timing->hold0_ms[i]);
         }
     }
 

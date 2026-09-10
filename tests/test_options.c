@@ -12,12 +12,14 @@ static void invalid_arguments(void) {
     const char *invalid[] = {"nan", "inf", "-inf", "-1", "1e30", "20ms", ""};
     AppOptions options;
     for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
-        char *args[] = {"test", "--no-config", "--short-ms", (char *)invalid[i]};
+        char *args[] = {"test", "--no-config", "--short0-ms", (char *)invalid[i]};
         assert(!options_parse(4, args, &options));
     }
     const char *invalid_hold[] = {"nan", "inf", "-inf", "0", "-1", "1e30", "20ms", ""};
     for (size_t i = 0; i < sizeof(invalid_hold) / sizeof(invalid_hold[0]); ++i) {
         char *args[] = {"test", "--no-config", "--hold-ms", (char *)invalid_hold[i]};
+        assert(!options_parse(4, args, &options));
+        args[2] = "--hold0-ms";
         assert(!options_parse(4, args, &options));
     }
     char *missing[] = {"test", "--no-config", "--hold-ms"};
@@ -60,18 +62,18 @@ static void invalid_arguments(void) {
     }
 }
 
-static void zero_short_options(void) {
+static void zero_short0_options(void) {
     AppOptions options;
-    char *global[] = {"test", "--no-config", "--short-ms", "0"};
+    char *global[] = {"test", "--no-config", "--short0-ms", "0"};
     assert(options_parse(4, global, &options));
-    for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) assert(options.timing.short_ms[i] == 0.0);
+    for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) assert(options.timing.short0_ms[i] == 0.0);
 
-    char *per_button[] = {"test", "--no-config", "--left-short-ms", "0",
-                          "--right-short-ms", "30"};
+    char *per_button[] = {"test", "--no-config", "--left-short0-ms", "0",
+                          "--right-short0-ms", "30"};
     assert(options_parse(6, per_button, &options));
-    assert(options.timing.short_ms[MOUSE_BUTTON_LEFT] == 0.0);
-    assert(options.timing.short_ms[MOUSE_BUTTON_RIGHT] == 30.0);
-    assert(options.timing.short_ms[MOUSE_BUTTON_MIDDLE] == 15.0);
+    assert(options.timing.short0_ms[MOUSE_BUTTON_LEFT] == 0.0);
+    assert(options.timing.short0_ms[MOUSE_BUTTON_RIGHT] == 30.0);
+    assert(options.timing.short0_ms[MOUSE_BUTTON_MIDDLE] == 15.0);
 }
 
 static void precedence_and_roundtrip(void) {
@@ -81,16 +83,22 @@ static void precedence_and_roundtrip(void) {
     assert(snprintf(path, sizeof(path), "%s/config.args", directory) > 0);
     FILE *file = fopen(path, "w");
     assert(file != NULL);
-    assert(fputs("# Config precedes CLI\n--short-ms 0\n--left-short-ms 18\n--hold-ms 21\n", file) >= 0);
+    assert(fputs("# Legacy short aliases precede CLI\n"
+                 "--short-ms 0\n--left-short-ms 18\n"
+                 "--hold0-ms 41\n--left-hold0-ms 45\n--hold-ms 21\n", file) >= 0);
     assert(fclose(file) == 0);
 
     AppOptions options;
-    char *args[] = {"test", "--config", path, "--right-short-ms", "24",
+    char *args[] = {"test", "--config", path, "--right-short0-ms", "24",
+                    "--hold0-ms", "50", "--left-hold0-ms", "35",
                     "--hold-ms", "30", "--left-hold-ms", "12.5"};
-    assert(options_parse(9, args, &options));
-    assert(options.timing.short_ms[0] == 18);
-    assert(options.timing.short_ms[1] == 24);
-    assert(options.timing.short_ms[2] == 0);
+    assert(options_parse(13, args, &options));
+    assert(options.timing.short0_ms[0] == 18);
+    assert(options.timing.short0_ms[1] == 24);
+    assert(options.timing.short0_ms[2] == 0);
+    assert(options.timing.hold0_ms[0] == 35);
+    assert(options.timing.hold0_ms[1] == 50);
+    assert(options.timing.hold0_ms[2] == 50);
     assert(options.timing.hold_ms[0] == 12.5);
     assert(options.timing.hold_ms[1] == 30);
     assert(options.timing.hold_ms[2] == 30);
@@ -109,7 +117,8 @@ static void precedence_and_roundtrip(void) {
     assert(loaded.debug_wheel);
     assert(loaded.log);
     for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) {
-        assert(loaded.timing.short_ms[i] == options.timing.short_ms[i]);
+        assert(loaded.timing.short0_ms[i] == options.timing.short0_ms[i]);
+        assert(loaded.timing.hold0_ms[i] == options.timing.hold0_ms[i]);
         assert(loaded.timing.hold_ms[i] == options.timing.hold_ms[i]);
         assert(loaded.buttons[i] == options.buttons[i]);
     }
@@ -121,11 +130,18 @@ static void precedence_and_roundtrip(void) {
                                  loaded.debug, loaded.debug_wheel, loaded.log));
     ConfigTokens saved;
     assert(config_load_tokens(path, &saved));
+    bool saw_short0 = false;
+    bool saw_hold0 = false;
     for (int i = 0; i < saved.count; ++i) {
         assert(strstr(saved.tokens[i], "debug") == NULL);
         assert(strcmp(saved.tokens[i], "--log") != 0);
         assert(strcmp(saved.tokens[i], "--no-log") != 0);
+        assert(strcmp(saved.tokens[i], "--short-ms") != 0);
+        assert(strstr(saved.tokens[i], "-short-ms") == NULL);
+        if (strstr(saved.tokens[i], "short0-ms") != NULL) saw_short0 = true;
+        if (strstr(saved.tokens[i], "hold0-ms") != NULL) saw_hold0 = true;
     }
+    assert(saw_short0 && saw_hold0);
     assert(options_parse(3, load_args, &loaded));
     assert(!loaded.debug);
     assert(!loaded.debug_wheel);
@@ -138,7 +154,8 @@ static void precedence_and_roundtrip(void) {
     assert(loaded.debug);
     char *ignore[] = {"test", "--config", path, "--no-config"};
     assert(options_parse(4, ignore, &loaded));
-    assert(loaded.timing.short_ms[0] == DEFAULT_SHORT_MS);
+    assert(loaded.timing.short0_ms[0] == DEFAULT_SHORT0_MS);
+    assert(loaded.timing.hold0_ms[0] == DEFAULT_HOLD0_MS);
     file = fopen(path, "w");
     assert(file != NULL);
     assert(fputs("--short-ms invalid\n", file) >= 0);
@@ -150,7 +167,7 @@ static void precedence_and_roundtrip(void) {
 
 int main(void) {
     invalid_arguments();
-    zero_short_options();
+    zero_short0_options();
     precedence_and_roundtrip();
     puts("options/config tests passed");
     return 0;

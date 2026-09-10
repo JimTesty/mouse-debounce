@@ -24,9 +24,10 @@ static void filter_annotations(void) {
     assert(log.file != NULL);
     DebounceFilter filter;
     const bool enabled[MOUSE_BUTTON_COUNT] = {true, false, false};
-    const double short_ms[MOUSE_BUTTON_COUNT] = {0, 0, 0};
+    const double short0_ms[MOUSE_BUTTON_COUNT] = {50, 50, 50};
+    const double hold0_ms[MOUSE_BUTTON_COUNT] = {70, 70, 70};
     const double hold_ms[MOUSE_BUTTON_COUNT] = {25, 25, 25};
-    debounce_filter_init(&filter, enabled, short_ms, hold_ms);
+    debounce_filter_init(&filter, enabled, short0_ms, hold0_ms, hold_ms);
     CGEventRef event = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseDown, CGPointZero, kCGMouseButtonLeft);
     assert(event != NULL);
     const CGEventType types[] = {kCGEventLeftMouseDown, kCGEventLeftMouseUp,
@@ -37,7 +38,13 @@ static void filter_annotations(void) {
         now_ns = (10 + i) * 1000000;
         CGEventSetType(event, types[i]);
         DebounceAction action;
+        CFAbsoluteTime before = CFAbsoluteTimeGetCurrent();
         CGEventRef result = debounce_filter_handle(&filter, NULL, types[i], event, &action);
+        CFAbsoluteTime after = CFAbsoluteTimeGetCurrent();
+        if (i == 1) {
+            CFAbsoluteTime fire = CFRunLoopTimerGetNextFireDate(filter.button[0].pending_timer);
+            assert(fire >= before + 0.070 - 0.000001 && fire <= after + 0.070 + 0.000001);
+        }
         assert(action == expected[i]);
         assert((result == NULL) == (i >= 1 && i <= 3));
         assert(event_log_handle(&log, types[i], event, action));

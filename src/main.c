@@ -272,7 +272,8 @@ int main(int argc, char **argv) {
         debounce_filter_init(
             &app.filter,
             app.options.buttons,
-            app.options.timing.short_ms,
+            app.options.timing.short0_ms,
+            app.options.timing.hold0_ms,
             app.options.timing.hold_ms
         );
         app.filter.debug = app.options.debug;
@@ -315,9 +316,10 @@ int main(int argc, char **argv) {
         fprintf(app.output, "Mouse Debounce active:\n");
         for (int button = 0; button < MOUSE_BUTTON_COUNT; ++button) {
             if (!app.options.buttons[button]) continue;
-            fprintf(app.output, "  %-6s short-ms=%.1f hold-ms=%.1f\n",
+            fprintf(app.output, "  %-6s short0-ms=%.1f hold0-ms=%.1f hold-ms=%.1f\n",
                 mouse_button_name((MouseButton)button),
-                app.options.timing.short_ms[button],
+                app.options.timing.short0_ms[button],
+                app.options.timing.hold0_ms[button],
                 app.options.timing.hold_ms[button]);
         }
         fprintf(app.output, "  sound-volume=%.2f\n", app.options.sound_volume);

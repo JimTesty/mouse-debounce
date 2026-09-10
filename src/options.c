@@ -33,12 +33,13 @@ void options_print_usage(const char *argv0) {
         "  %s --measure [--buttons LIST] [--output PATH] [--duration SEC]\n"
         "\n"
         "Timing options:\n"
-        "  --short-ms N / --hold-ms N             set all buttons\n"
-        "  --left-short-ms N / --left-hold-ms N\n"
-        "  --right-short-ms N / --right-hold-ms N\n"
-        "  --middle-short-ms N / --middle-hold-ms N\n"
-        "  short N is the press-length limit; 0 means no limit (every Up is held)\n"
-        "  hold N is the held-release debounce window and must be greater than 0\n"
+        "  --short0-ms N / --hold0-ms N / --hold-ms N        set all buttons\n"
+        "  --left-short0-ms N / --left-hold0-ms N / --left-hold-ms N\n"
+        "  --right-short0-ms N / --right-hold0-ms N / --right-hold-ms N\n"
+        "  --middle-short0-ms N / --middle-hold0-ms N / --middle-hold-ms N\n"
+        "  short0 N is the short-press threshold; 0 means every release uses hold\n"
+        "  with positive short0, shorter presses use hold0 and others use hold\n"
+        "  hold0 and hold must be greater than 0\n"
         "\n"
         "Sound:\n"
         "  --sound-volume N   alert/debug tick volume, 0..1 (default 0.1; 0 mutes)\n"
@@ -53,7 +54,7 @@ void options_print_usage(const char *argv0) {
         "  --no-log           disable event logging\n"
         "\n"
         "Unset per-button values inherit the average of explicitly set siblings;\n"
-        "if no sibling is set, the default is %.0f/%.0f ms. Later arguments win.\n"
+        "if no sibling is set, the defaults are %.0f/%.0f/%.0f ms. Later arguments win.\n"
         "\n"
         "Config:\n"
         "  --config PATH      use a different config.args file\n"
@@ -63,7 +64,7 @@ void options_print_usage(const char *argv0) {
         "Default config: ~/Library/Application Support/MouseDebounce/config.args\n"
         "Default buttons: left,right,middle\n"
         "Measurement diagnoses wheel timing but never modifies wheel events.\n",
-        argv0, argv0, DEFAULT_SHORT_MS, DEFAULT_HOLD_MS);
+        argv0, argv0, DEFAULT_SHORT0_MS, DEFAULT_HOLD0_MS, DEFAULT_HOLD_MS);
 }
 
 static bool parse_button_timing(
@@ -72,18 +73,30 @@ static bool parse_button_timing(
     TimingDraft *draft
 ) {
     double value;
-    bool is_short = strcmp(name, "--short-ms") == 0 ||
+    bool is_short0 = strcmp(name, "--short0-ms") == 0 ||
+        strcmp(name, "--left-short0-ms") == 0 ||
+        strcmp(name, "--right-short0-ms") == 0 ||
+        strcmp(name, "--middle-short0-ms") == 0 ||
+        strcmp(name, "--short-ms") == 0 ||
         strcmp(name, "--left-short-ms") == 0 ||
         strcmp(name, "--right-short-ms") == 0 ||
         strcmp(name, "--middle-short-ms") == 0;
     if (!parse_nonnegative_double(value_text, &value) || value > kMaxTimingMs ||
-        (!is_short && value == 0.0)) return false;
+        (!is_short0 && value == 0.0)) return false;
 
-    if (strcmp(name, "--short-ms") == 0) timing_set_short_all(draft, value);
+    if (strcmp(name, "--short0-ms") == 0 || strcmp(name, "--short-ms") == 0)
+        timing_set_short0_all(draft, value);
+    else if (strcmp(name, "--hold0-ms") == 0) timing_set_hold0_all(draft, value);
     else if (strcmp(name, "--hold-ms") == 0) timing_set_hold_all(draft, value);
-    else if (strcmp(name, "--left-short-ms") == 0) timing_set_short_button(draft, MOUSE_BUTTON_LEFT, value);
-    else if (strcmp(name, "--right-short-ms") == 0) timing_set_short_button(draft, MOUSE_BUTTON_RIGHT, value);
-    else if (strcmp(name, "--middle-short-ms") == 0) timing_set_short_button(draft, MOUSE_BUTTON_MIDDLE, value);
+    else if (strcmp(name, "--left-short0-ms") == 0 || strcmp(name, "--left-short-ms") == 0)
+        timing_set_short0_button(draft, MOUSE_BUTTON_LEFT, value);
+    else if (strcmp(name, "--right-short0-ms") == 0 || strcmp(name, "--right-short-ms") == 0)
+        timing_set_short0_button(draft, MOUSE_BUTTON_RIGHT, value);
+    else if (strcmp(name, "--middle-short0-ms") == 0 || strcmp(name, "--middle-short-ms") == 0)
+        timing_set_short0_button(draft, MOUSE_BUTTON_MIDDLE, value);
+    else if (strcmp(name, "--left-hold0-ms") == 0) timing_set_hold0_button(draft, MOUSE_BUTTON_LEFT, value);
+    else if (strcmp(name, "--right-hold0-ms") == 0) timing_set_hold0_button(draft, MOUSE_BUTTON_RIGHT, value);
+    else if (strcmp(name, "--middle-hold0-ms") == 0) timing_set_hold0_button(draft, MOUSE_BUTTON_MIDDLE, value);
     else if (strcmp(name, "--left-hold-ms") == 0) timing_set_hold_button(draft, MOUSE_BUTTON_LEFT, value);
     else if (strcmp(name, "--right-hold-ms") == 0) timing_set_hold_button(draft, MOUSE_BUTTON_RIGHT, value);
     else if (strcmp(name, "--middle-hold-ms") == 0) timing_set_hold_button(draft, MOUSE_BUTTON_MIDDLE, value);
@@ -92,7 +105,12 @@ static bool parse_button_timing(
 }
 
 static bool is_timing_option(const char *name) {
-    return strcmp(name, "--short-ms") == 0 || strcmp(name, "--hold-ms") == 0 ||
+    return strcmp(name, "--short0-ms") == 0 || strcmp(name, "--hold0-ms") == 0 ||
+        strcmp(name, "--hold-ms") == 0 ||
+        strcmp(name, "--left-short0-ms") == 0 || strcmp(name, "--right-short0-ms") == 0 ||
+        strcmp(name, "--middle-short0-ms") == 0 || strcmp(name, "--left-hold0-ms") == 0 ||
+        strcmp(name, "--right-hold0-ms") == 0 || strcmp(name, "--middle-hold0-ms") == 0 ||
+        strcmp(name, "--short-ms") == 0 ||
         strcmp(name, "--left-short-ms") == 0 || strcmp(name, "--right-short-ms") == 0 ||
         strcmp(name, "--middle-short-ms") == 0 || strcmp(name, "--left-hold-ms") == 0 ||
         strcmp(name, "--right-hold-ms") == 0 || strcmp(name, "--middle-hold-ms") == 0;

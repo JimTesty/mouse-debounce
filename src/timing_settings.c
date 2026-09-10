@@ -6,10 +6,17 @@ void timing_draft_init(TimingDraft *draft) {
     memset(draft, 0, sizeof(*draft));
 }
 
-void timing_set_short_all(TimingDraft *draft, double value) {
+void timing_set_short0_all(TimingDraft *draft, double value) {
     for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) {
-        draft->short_set[i] = true;
-        draft->short_ms[i] = value;
+        draft->short0_set[i] = true;
+        draft->short0_ms[i] = value;
+    }
+}
+
+void timing_set_hold0_all(TimingDraft *draft, double value) {
+    for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) {
+        draft->hold0_set[i] = true;
+        draft->hold0_ms[i] = value;
     }
 }
 
@@ -20,9 +27,14 @@ void timing_set_hold_all(TimingDraft *draft, double value) {
     }
 }
 
-void timing_set_short_button(TimingDraft *draft, MouseButton button, double value) {
-    draft->short_set[button] = true;
-    draft->short_ms[button] = value;
+void timing_set_short0_button(TimingDraft *draft, MouseButton button, double value) {
+    draft->short0_set[button] = true;
+    draft->short0_ms[button] = value;
+}
+
+void timing_set_hold0_button(TimingDraft *draft, MouseButton button, double value) {
+    draft->hold0_set[button] = true;
+    draft->hold0_ms[button] = value;
 }
 
 void timing_set_hold_button(TimingDraft *draft, MouseButton button, double value) {
@@ -54,6 +66,7 @@ static void resolve_metric(
 }
 
 void timing_resolve(const TimingDraft *draft, TimingSettings *settings) {
-    resolve_metric(draft->short_set, draft->short_ms, DEFAULT_SHORT_MS, settings->short_ms);
+    resolve_metric(draft->short0_set, draft->short0_ms, DEFAULT_SHORT0_MS, settings->short0_ms);
+    resolve_metric(draft->hold0_set, draft->hold0_ms, DEFAULT_HOLD0_MS, settings->hold0_ms);
     resolve_metric(draft->hold_set, draft->hold_ms, DEFAULT_HOLD_MS, settings->hold_ms);
 }

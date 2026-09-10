@@ -19,7 +19,7 @@ static void observe(Measurement *m, CGEventRef event, CGEventType type, double m
 static void short_press_alerts(void) {
     static Measurement m;
     bool enabled[MOUSE_BUTTON_COUNT] = {true, false, false};
-    TimingSettings timing = {{20, 20, 20}, {20, 20, 20}};
+    TimingSettings timing = {.short0_ms = {20, 20, 20}, .hold0_ms = {20, 20, 20}, .hold_ms = {20, 20, 20}};
     FILE *out = tmpfile();
     assert(out != NULL);
     measurement_init(&m, enabled, &timing, out);
@@ -61,10 +61,11 @@ static void short_press_alerts(void) {
     fclose(out);
 }
 
-static void reported_long_hold_bounces(double short_ms) {
+static void reported_long_hold_bounces(double short0_ms) {
     static Measurement m;
     bool enabled[MOUSE_BUTTON_COUNT] = {true, false, false};
-    TimingSettings timing = {{short_ms, short_ms, short_ms}, {70, 70, 70}};
+    TimingSettings timing = {.short0_ms = {short0_ms, short0_ms, short0_ms},
+        .hold0_ms = {70, 70, 70}, .hold_ms = {25, 25, 25}};
     FILE *out = tmpfile();
     assert(out != NULL);
     measurement_init(&m, enabled, &timing, out);
@@ -81,7 +82,7 @@ static void reported_long_hold_bounces(double short_ms) {
     observe(&m, event, kCGEventLeftMouseUp, 2255.5);
     observe(&m, event, kCGEventLeftMouseDown, 2453.5);
     observe(&m, event, kCGEventLeftMouseUp, 2512.8);
-    unsigned expected = short_ms == 0 ? 2 : 0;
+    unsigned expected = 2;
     assert(ticks == expected);
     assert(m.press_count[0] == 4 && m.gap_count[0] == 3);
     measurement_print_summary(&m);
@@ -93,11 +94,11 @@ static void reported_long_hold_bounces(double short_ms) {
     while (fgets(line, sizeof(line), out) != NULL) {
         if (strstr(line, "suspected bounce") != NULL) {
             assert(strncmp(line, "\033[1;33m", 7) == 0);
-            assert(strstr(line, "Up/Down within hold-ms") != NULL);
+            assert(strstr(line, "Up/Down within selected hold window") != NULL);
             assert(strstr(line, "\033[0m\n") != NULL);
             ++marked;
         }
-        if (strstr(line, short_ms == 0 ? "--left-short-ms 0 " : "--left-short-ms 50 ")) {
+        if (strstr(line, short0_ms == 0 ? "--left-short0-ms 0 " : "--left-short0-ms 50 ")) {
             preserved_setting = true;
         }
     }
@@ -106,10 +107,38 @@ static void reported_long_hold_bounces(double short_ms) {
     fclose(out);
 }
 
+static void combined_windows(void) {
+    static Measurement m;
+    const bool enabled[MOUSE_BUTTON_COUNT] = {true, false, false};
+    TimingSettings timing = {.short0_ms = {50, 50, 50}, .hold0_ms = {40, 40, 40},
+        .hold_ms = {25, 25, 25}};
+    FILE *out = tmpfile();
+    assert(out != NULL);
+    measurement_init(&m, enabled, &timing, out);
+    CGEventRef event = CGEventCreate(NULL);
+    assert(event != NULL);
+    ticks = 0;
+    observe(&m, event, kCGEventLeftMouseDown, 0);
+    observe(&m, event, kCGEventLeftMouseUp, 38.49);
+    assert(m.shadow[0].pending_deadline_ns == 78490000);
+    observe(&m, event, kCGEventLeftMouseDown, 70.47);
+    assert(ticks == 1); /* 31.98 ms gap caught by hold0, not hold. */
+    observe(&m, event, kCGEventLeftMouseUp, 144.41);
+    assert(m.shadow[0].pending_deadline_ns == 169410000);
+    observe(&m, event, kCGEventLeftMouseDown, 451.79);
+    assert(ticks == 1);
+    observe(&m, event, kCGEventLeftMouseUp, 588.64);
+    observe(&m, event, kCGEventLeftMouseDown, 608.64);
+    assert(ticks == 2); /* Long-hold interruption caught by ordinary hold. */
+    CFRelease(event);
+    fclose(out);
+}
+
 static void independent_buttons(void) {
     static Measurement m;
     bool enabled[MOUSE_BUTTON_COUNT] = {true, true, true};
-    TimingSettings timing = {{0, 50, 0}, {70, 30, 10}};
+    TimingSettings timing = {.short0_ms = {0, 50, 0}, .hold0_ms = {40, 30, 40},
+        .hold_ms = {70, 10, 10}};
     FILE *out = tmpfile();
     assert(out != NULL);
     measurement_init(&m, enabled, &timing, out);
@@ -124,7 +153,7 @@ static void independent_buttons(void) {
     observe(&m, event, kCGEventLeftMouseUp, 1100);
     observe(&m, event, kCGEventRightMouseUp, 1101);
     observe(&m, event, kCGEventOtherMouseUp, 1102);
-    assert(m.shadow[0].pending_up && !m.shadow[1].pending_up && m.shadow[2].pending_up);
+    assert(m.shadow[0].pending_up && m.shadow[1].pending_up && m.shadow[2].pending_up);
 
     observe(&m, event, kCGEventOtherMouseDown, 1110); /* Middle: 8 < 10 ms. */
     assert(ticks == 1 && m.shadow[0].pending_up);
@@ -145,6 +174,7 @@ int main(void) {
     short_press_alerts();
     reported_long_hold_bounces(0);
     reported_long_hold_bounces(50);
+    combined_windows();
     independent_buttons();
     puts("measurement tests passed");
     return 0;

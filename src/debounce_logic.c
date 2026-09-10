@@ -34,7 +34,8 @@ DebounceAction debounce_on_down(DebounceState *state, uint64_t now_ns) {
 DebounceAction debounce_on_up(
     DebounceState *state,
     uint64_t now_ns,
-    uint64_t short_ns,
+    uint64_t short0_ns,
+    uint64_t hold0_ns,
     uint64_t hold_ns
 ) {
     if (!state->downstream_down) {
@@ -43,20 +44,14 @@ DebounceAction debounce_on_up(
     }
 
     uint64_t held_ns = UINT64_MAX;
-    if (state->last_physical_down_ns != 0 && now_ns >= state->last_physical_down_ns) {
+    if (now_ns >= state->last_physical_down_ns) {
         held_ns = now_ns - state->last_physical_down_ns;
     }
 
-    /* Zero removes the press-length restriction, catching glitches during long holds. */
-    if (short_ns == 0 || held_ns < short_ns) {
-        state->pending_up = true;
-        state->pending_deadline_ns = now_ns + hold_ns;
-        return DEBOUNCE_HOLD_UP;
-    }
-
-    state->downstream_down = false;
-    state->last_physical_down_ns = 0;
-    return DEBOUNCE_PASS;
+    /* Short presses get their own window; every other press uses the normal one. */
+    state->pending_up = true;
+    state->pending_deadline_ns = now_ns + (held_ns < short0_ns ? hold0_ns : hold_ns);
+    return DEBOUNCE_HOLD_UP;
 }
 
 void debounce_pending_emitted(DebounceState *state) {
