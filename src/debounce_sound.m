@@ -114,7 +114,7 @@ static void debounce_sound_init(void) {
     tick = make_tone(format, 1000.0);
     sound_gap = make_silence(format);
     dragged_tone = make_dragged_tone(format);
-    for (int64_t click_level = 2; click_level <= kMaxClickLevel; ++click_level) {
+    for (int64_t click_level = 1; click_level <= kMaxClickLevel; ++click_level) {
         click_tones[click_level] = make_tone(format, click_frequency(click_level));
     }
 
@@ -142,6 +142,14 @@ void debounce_sound_play_click(int64_t click_state) {
     debounce_sound_init();
     if (click_state > kMaxClickLevel) click_state = kMaxClickLevel;
     play_buffer(click_tones[click_state]);
+}
+
+void debounce_sound_play_wheel(int64_t vertical) {
+    int i = vertical + kMaxClickLevel / 2;
+    debounce_sound_init();
+    if (i < 1) i = 1;
+    if (i > kMaxClickLevel) i = kMaxClickLevel;
+    play_buffer(click_tones[i]);
 }
 
 void debounce_sound_play_dragged(void) {

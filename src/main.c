@@ -60,9 +60,9 @@ static void play_debug_event_sound(
             debounce_sound_play_dragged();
         }
     }
-    if (app->options.debug_wheel && type == kCGEventScrollWheel &&
-        CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis1) < 0) {
-        debounce_sound_play();
+    if (app->options.debug_wheel && type == kCGEventScrollWheel) {
+        debounce_sound_play_wheel(CGEventGetIntegerValueField(
+            event, kCGScrollWheelEventDeltaAxis1));
     }
 }
 
