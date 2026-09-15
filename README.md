@@ -46,11 +46,12 @@ Every **Up** matched to a press is withheld for one of two release delays. The
 filter compares its arrival time with the most recent physical **Down** for that
 button:
 
-- if the elapsed time is less than `short0-ms`, it uses `hold0-ms`;
-- otherwise, it uses `hold-ms`.
+- if the elapsed time is less than `short0-ms`, it uses **only** `hold0-ms`;
+  `hold-ms` is not used for that Up at all;
+- otherwise, it uses **only** `hold-ms`; `hold0-ms` is not used for that Up.
 
 `short0-ms=0` means the first condition can never match, so every matched Up uses
-the normal `hold-ms` delay.
+the normal `hold-ms` delay; `hold0-ms` is unused in that configuration.
 
 If another Down arrives before the selected deadline, the filter discards both
 the withheld Up and the returning Down. The application sees one uninterrupted
