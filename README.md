@@ -37,35 +37,27 @@ Development builds use ad-hoc signing by default. To reduce repeated Accessibili
    hold or drag. For example, after roughly a one-second press it may report Up,
    followed by Down about 20 ms later.
 
-In both cases, the problem is an unintended release followed by a quick return
-to the pressed state. The filter repairs that pair as described below.
+In both cases, the problem is an unintended Up followed by a quick return to
+Down. The filter repairs that pair as described below.
 
 ## Debounce algorithm
 
-Every **Up** matched to a press is withheld for one of two release delays. The
-filter compares its arrival time with the most recent physical **Down** for that
-button:
+The filter repairs only an **Up -> Down** pair.
 
-- if the elapsed time is less than `short0-ms`, it uses **only** `hold0-ms`;
-  `hold-ms` is not used for that Up at all;
-- otherwise, it uses **only** `hold-ms`; `hold0-ms` is not used for that Up.
+```
+                                 Up         Down
+──────────────────────┐          ┌───────────┐
+                      │ < short0 │ < hold0 ? │
+                      └──────────┘           └──────────
+────┐                            ┌───────────┐
+    │                   ≥ short0 │ < hold ?  │
+    └────────────────────────────┘           └──────────
+                               Discard this pulse?
+```
 
-`short0-ms=0` means the first condition can never match, so every matched Up uses
-the normal `hold-ms` delay; `hold0-ms` is unused in that configuration.
+Whenever a button **Up** event arrives, it is withheld for some time (either `hold0-ms` or `hold-ms`), to determine whether it forms a short pulse with a following **Down**. How long to wait is determined by whether the previous **Down-Up** duration is <`short0-ms`. If the following **Down** does form a short pulse, the Up-Down pair is discarded, keeping the press uninterrupted. Otherwise, the Up event is delivered.
 
-If another Down arrives before the selected deadline, the filter discards both
-the withheld Up and the returning Down. The application sees one uninterrupted
-press. Otherwise, the Up is delivered when the deadline expires, and a Down at
-or after the deadline begins a new press. Every physical Down updates the time
-used for the next Up, even when that Down was suppressed as the return half of a
-bounce pair or as a duplicate. The delay is therefore selected independently
-for every Up, not just the first Up of a click.
-
-Down events are never delayed: they pass immediately or are suppressed as a
-returning bounce or duplicate. An unmatched Up, such as one received after the
-utility starts while a button is already held, passes immediately to avoid
-leaving the application stuck in a pressed state. The filter cannot remove an
-isolated false Down because it cannot know the user's physical intent.
+Specifically, we are postponing each Up event by either `hold0-ms` or `hold-ms`, depending on whether the previous Down event was within `short0-ms` ago. If the deadline expires before the next Down event arrives, the Up event is delivered. Otherwise the pair is discarded. Every physical Down updates the time used for the next Up, even when that Down was discarded. Down events are never delayed.
 
 For example, the defaults `--short0-ms 50 --hold0-ms 40 --hold-ms 25` catch a
 32 ms return after a short press but let the same gap begin a new press after a
@@ -75,12 +67,12 @@ long hold:
    0 ms  Down -> delivered immediately
   30 ms  Up   -> recent Down, withheld for 40 ms
   62 ms  Down -> discard this Down and the withheld Up; record this physical Down
- 100 ms  Up   -> recent suppressed Down, withheld for 40 ms
- 140 ms       -> no Down returned, so deliver the release
+ 100 ms  Up   -> recent Down, withheld for 40 ms
+ 140 ms       -> no Down came, so deliver the Up
 1000 ms  Down -> delivered immediately
 2000 ms  Up   -> older Down, withheld for 25 ms
-2025 ms       -> no Down returned, so deliver the release
-2032 ms  Down -> delivered as a new press
+2025 ms       -> no Down came, so deliver the Up
+2032 ms  Down -> delivered immediately
 ```
 
 Defaults:
@@ -98,7 +90,7 @@ Increasing either release delay catches longer glitches but delays the genuine
 releases that select it. Intentional re-clicks whose Up-to-Down gap is shorter
 than the selected delay can be merged into one press. Choose the delays from
 measurements that include intentional double-clicks, whose gaps can overlap
-glitch timings.
+glitch timings. To make genuine quick clicks (including double-clicks) less likely to be discarded, reduce one or more of the three settings. Set `short0-ms=0` to only check the second case -- every Up waiting for `hold-ms`.
 
 ## Timing clock
 
