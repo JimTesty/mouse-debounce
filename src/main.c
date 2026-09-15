@@ -360,7 +360,9 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (app.options.debug) debounce_sound_play();
+    if (app.options.debug) {
+        for (int i = 0; i < 3; ++i) debounce_sound_play();
+    }
     CFRunLoopRun();
     cleanup(&app);
     return 0;

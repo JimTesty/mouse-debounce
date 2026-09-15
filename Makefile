@@ -34,7 +34,7 @@ SOURCES := \
 OBJC_SOURCES := src/debounce_sound.m
 OBJECTS := $(patsubst src/%.c,$(OBJ)/%.o,$(SOURCES)) $(patsubst src/%.m,$(OBJ)/%.o,$(OBJC_SOURCES))
 DEPS := $(OBJECTS:.o=.d)
-FRAMEWORKS := -framework ApplicationServices -framework CoreFoundation -framework Foundation -framework AVFoundation
+FRAMEWORKS := -framework ApplicationServices -framework CoreFoundation -framework AVFoundation
 
 .PHONY: all app test clean run install-user
 
