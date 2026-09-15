@@ -124,10 +124,6 @@ CGEventRef debounce_filter_handle(
             discard_pending_up(runtime);
             return NULL;
         }
-        if (action == DEBOUNCE_DROP) {
-            if (filter->debug) debounce_sound_play();
-            return NULL;
-        }
         return event;
     }
 

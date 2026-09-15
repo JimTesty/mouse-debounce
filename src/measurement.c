@@ -94,9 +94,8 @@ static void handle_button(Measurement *m, CGEventType type, CGEventRef event, ui
     int64_t click_state = CGEventGetIntegerValueField(event, kCGMouseEventClickState);
     DebounceAction action = button_filter_action(m, mouse, now_ns);
     bool bounce_pair = action == DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN;
-    bool bounce = bounce_pair || action == DEBOUNCE_DROP;
-    if (bounce) {
-        fputs(bounce_pair ? "\033[1;33m" : "\033[1m", m->out);
+    if (bounce_pair) {
+        fputs("\033[1;33m", m->out);
         debounce_sound_play();
     }
 
@@ -127,9 +126,9 @@ static void handle_button(Measurement *m, CGEventType type, CGEventRef event, ui
                 elapsed_s, mouse_button_name(mouse.button), click_state);
         }
     }
-    if (bounce) {
-        fprintf(m->out, "  <<< suspected bounce (%s; filter would suppress)\033[0m",
-            bounce_pair ? "Up/Down within selected hold window" : "duplicate Down");
+    if (bounce_pair) {
+        fputs("  <<< suspected bounce (Up/Down within selected hold window; filter would suppress)\033[0m",
+            m->out);
     }
     fputc('\n', m->out);
     fflush(m->out);

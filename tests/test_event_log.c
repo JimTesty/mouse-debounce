@@ -41,7 +41,7 @@ static void filter_annotations(void) {
     const CGEventType types[] = {kCGEventLeftMouseDown, kCGEventLeftMouseUp,
         kCGEventLeftMouseDown, kCGEventLeftMouseDown, kCGEventRightMouseDown};
     const DebounceAction expected[] = {DEBOUNCE_PASS, DEBOUNCE_HOLD_UP,
-        DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN, DEBOUNCE_DROP, DEBOUNCE_PASS};
+        DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN, DEBOUNCE_PASS, DEBOUNCE_PASS};
     for (size_t i = 0; i < sizeof(types) / sizeof(types[0]); ++i) {
         now_ns = (10 + i) * 1000000;
         CGEventSetType(event, types[i]);
@@ -54,7 +54,7 @@ static void filter_annotations(void) {
             assert(fire >= before + 0.070 - 0.000001 && fire <= after + 0.070 + 0.000001);
         }
         assert(action == expected[i]);
-        assert((result == NULL) == (i >= 1 && i <= 3));
+        assert((result == NULL) == (i >= 1 && i <= 2));
         assert(event_log_handle(&log, types[i], event, action));
     }
     /* No run loop or event posting: cancel any pending synthetic-test resources. */
@@ -70,14 +70,13 @@ static void filter_annotations(void) {
         }
         if (strstr(line, "<<< suspected bounce") != NULL) notes++;
         if (lines == 2) assert(strstr(line, "pair suppressed") != NULL);
-        if (lines == 3) assert(strstr(line, "duplicate Down; suppressed") != NULL);
-        if (lines == 2 || lines == 3) {
+        if (lines == 2) {
             assert(strstr(line, " (1.00ms)  <<< suspected bounce") != NULL);
         }
         if (lines == 4) assert(strstr(line, "RIGHT") != NULL);
         lines++;
     }
-    assert(lines == 5 && notes == 2);
+    assert(lines == 5 && notes == 1);
     /* A delayed release must retain the original event time and coordinates. */
     event = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseDown,
                                    CGPointMake(123, 456), kCGMouseButtonLeft);

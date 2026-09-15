@@ -26,7 +26,7 @@ static void combined_windows(void) {
     assert(debounce_on_down(&s, MS(1232)) == DEBOUNCE_EXPIRE_PENDING_AND_RETRY_DOWN);
     debounce_pending_emitted(&s);
     assert(debounce_on_down(&s, MS(1232)) == DEBOUNCE_PASS);
-    assert(debounce_on_down(&s, MS(1233)) == DEBOUNCE_DROP);
+    assert(debounce_on_down(&s, MS(1233)) == DEBOUNCE_PASS);
 }
 
 static void threshold_boundaries(void) {
@@ -42,7 +42,7 @@ static void threshold_boundaries(void) {
     assert(s.pending_deadline_ns == MS(240));
     assert(debounce_on_down(&s, MS(240)) == DEBOUNCE_EXPIRE_PENDING_AND_RETRY_DOWN);
     debounce_pending_emitted(&s);
-    assert(!s.downstream_down && !s.pending_up);
+    assert(s.has_physical_down && !s.pending_up);
 }
 
 static void zero_short0_uses_normal_window(void) {
@@ -50,7 +50,9 @@ static void zero_short0_uses_normal_window(void) {
     for (size_t i = 0; i < sizeof(durations) / sizeof(durations[0]); ++i) {
         DebounceState s;
         debounce_state_init(&s);
-        assert(debounce_on_up(&s, MS(1), 0, MS(70), MS(25)) == DEBOUNCE_PASS);
+        assert(debounce_on_up(&s, MS(1), 0, MS(70), MS(25)) == DEBOUNCE_HOLD_UP);
+        assert(s.pending_deadline_ns == MS(26));
+        debounce_pending_emitted(&s);
         assert(debounce_on_down(&s, MS(100)) == DEBOUNCE_PASS);
         uint64_t up = MS(100) + durations[i];
         assert(debounce_on_up(&s, up, 0, MS(70), MS(25)) == DEBOUNCE_HOLD_UP);
@@ -63,7 +65,9 @@ static void independent_windows(void) {
     DebounceState left, right;
     debounce_state_init(&left);
     debounce_state_init(&right);
-    assert(debounce_on_up(&left, MS(1), MS(50), MS(40), MS(25)) == DEBOUNCE_PASS);
+    assert(debounce_on_up(&left, MS(1), MS(50), MS(40), MS(25)) == DEBOUNCE_HOLD_UP);
+    assert(left.pending_deadline_ns == MS(26));
+    debounce_pending_emitted(&left);
     debounce_on_down(&left, MS(100));
     debounce_on_down(&right, MS(100));
     debounce_on_up(&left, MS(120), MS(50), MS(40), MS(25));
@@ -76,11 +80,39 @@ static void independent_windows(void) {
     assert(debounce_on_down(&left, MS(150)) == DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN);
 }
 
+static void nonalternating_events(void) {
+    DebounceState left, right;
+    debounce_state_init(&left);
+    debounce_state_init(&right);
+
+    /* With no earlier Down, an Up uses the normal window. A repeated Up does too. */
+    assert(debounce_on_up(&left, MS(100), MS(50), MS(40), MS(25)) == DEBOUNCE_HOLD_UP);
+    assert(left.pending_deadline_ns == MS(125));
+    assert(debounce_on_up(&left, MS(110), MS(50), MS(40), MS(25)) == DEBOUNCE_HOLD_UP);
+    assert(left.pending_deadline_ns == MS(135));
+
+    /* Consecutive Downs pass and the latest one supplies the next Up's timestamp. */
+    assert(debounce_on_down(&right, MS(200)) == DEBOUNCE_PASS);
+    assert(debounce_on_down(&right, MS(210)) == DEBOUNCE_PASS);
+    assert(right.last_physical_down_ns == MS(210));
+    assert(debounce_on_up(&right, MS(230), MS(50), MS(40), MS(25)) == DEBOUNCE_HOLD_UP);
+    assert(right.pending_deadline_ns == MS(270));
+
+    /* Delivering an Up retains the latest Down for a subsequent Up. */
+    debounce_pending_emitted(&right);
+    assert(debounce_on_up(&right, MS(240), MS(50), MS(40), MS(25)) == DEBOUNCE_HOLD_UP);
+    assert(right.pending_deadline_ns == MS(280));
+
+    /* Activity for one button cannot alter another button's pending decision. */
+    assert(left.pending_up && left.pending_deadline_ns == MS(135));
+}
+
 int main(void) {
     combined_windows();
     threshold_boundaries();
     zero_short0_uses_normal_window();
     independent_windows();
+    nonalternating_events();
     puts("debounce_logic tests passed");
     return 0;
 }

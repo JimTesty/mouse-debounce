@@ -7,13 +7,12 @@
 typedef enum {
     DEBOUNCE_PASS = 0,
     DEBOUNCE_HOLD_UP,
-    DEBOUNCE_DROP,
     DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN,
     DEBOUNCE_EXPIRE_PENDING_AND_RETRY_DOWN,
 } DebounceAction;
 
 typedef struct {
-    bool downstream_down;
+    bool has_physical_down;
     bool pending_up;
     uint64_t last_physical_down_ns;
     uint64_t pending_deadline_ns;

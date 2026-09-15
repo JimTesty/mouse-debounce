@@ -59,6 +59,12 @@ Whenever a button **Up** event arrives, it is withheld for some time (either `ho
 
 Specifically, we are postponing each Up event by either `hold0-ms` or `hold-ms`, depending on whether the previous Down event was within `short0-ms` ago. If the deadline expires before the next Down event arrives, the Up event is delivered. Otherwise the pair is discarded. Every physical Down updates the time used for the next Up, even when that Down was discarded. Down events are never delayed.
 
+Events do not need to alternate, and all timing state is per button. Consecutive
+Downs pass immediately and each becomes that button's latest Down. Every Up uses
+that latest Down, even if the previous event was another Up. Before a button's
+first Down, the Down-to-Up duration is treated as infinite, so an Up uses
+`hold-ms`.
+
 For example, the defaults `--short0-ms 50 --hold0-ms 40 --hold-ms 25` catch a
 32 ms return after a short press but let the same gap begin a new press after a
 long hold:
@@ -84,13 +90,15 @@ hold-ms   = 25
 buttons   = left,right,middle
 ```
 
-The defaults use a 40 ms delay for releases less than 50 ms after the latest
-physical Down and preserve the 25 ms normal release delay for all other presses.
-Increasing either release delay catches longer glitches but delays the genuine
-releases that select it. Intentional re-clicks whose Up-to-Down gap is shorter
-than the selected delay can be merged into one press. Choose the delays from
-measurements that include intentional double-clicks, whose gaps can overlap
-glitch timings. To make genuine quick clicks (including double-clicks) less likely to be discarded, reduce one or more of the three settings. Set `short0-ms=0` to only check the second case -- every Up waiting for `hold-ms`.
+The defaults give an Up the longer 40 ms delay only when it arrives within 50 ms
+of the latest Down. Every other Up gets the 25 ms delay. Longer delays catch
+longer glitches, but add the same release latency and can hide an intentional
+re-click whose Up-to-Down gap is shorter than the delay.
+
+If genuine quick re-clicks are being discarded, reduce the delay that applies:
+`hold0-ms` for presses shorter than `short0-ms`, or `hold-ms` for longer presses.
+Reduce `short0-ms` if too many presses are being assigned `hold0-ms`. Setting
+`short0-ms=0` disables `hold0-ms`, so every Up uses `hold-ms`.
 
 ## Timing clock
 
@@ -195,12 +203,11 @@ Button Down/Up events (including extra buttons) and scrolling are appended to
 With `--config PATH`, the log goes beside that config file. Movement and dragging
 are not logged. All raw button events are logged, even for buttons not enabled
 for filtering. Entries include suppressed events but exclude releases replayed
-by the filter. A suppressed Down gets a same-line `<<< suspected bounce` note
-from the filter's actual decision: either an Up/Down pair within the selected
-hold window or a duplicate Down. The earlier Up remains in the log; it cannot be
-identified as
-part of a pair until the returning Down arrives. These notes describe the
-filter's classification, not proof of a hardware glitch.
+by the filter. A Down suppressed as part of an Up/Down pair gets a same-line
+`<<< suspected bounce` note. Consecutive Downs are not suppressed. The earlier
+Up remains in the log; it cannot be identified as part of a pair until the
+returning Down arrives. These notes describe the filter's classification, not
+proof of a hardware glitch.
 
 Button entries end with elapsed time since that same button's previous raw event,
 such as ` (45.67ms)`, before any glitch note. Other buttons and scrolling do not

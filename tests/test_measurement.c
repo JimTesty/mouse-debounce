@@ -36,10 +36,10 @@ static void short_press_alerts(void) {
     observe(&m, event, kCGEventLeftMouseUp, 208);
     observe(&m, event, kCGEventLeftMouseDown, 228); /* Exactly at expiry: new click. */
     assert(ticks == 1);
-    observe(&m, event, kCGEventLeftMouseDown, 229); /* Duplicate Down. */
-    assert(ticks == 2);
+    observe(&m, event, kCGEventLeftMouseDown, 229); /* Consecutive Down passes normally. */
+    assert(ticks == 1);
     observe(&m, event, kCGEventRightMouseDown, 230); /* Disabled button. */
-    assert(ticks == 2);
+    assert(ticks == 1);
     assert(m.press_count[0] == 3 && m.gap_count[0] == 4);
     measurement_print_summary(&m);
 
@@ -49,14 +49,13 @@ static void short_press_alerts(void) {
     bool summary = false;
     while (fgets(line, sizeof(line), out) != NULL) {
         if (strstr(line, "suspected bounce") != NULL) {
-            if (marked == 0) assert(strncmp(line, "\033[1;33m", 7) == 0);
-            else assert(strncmp(line, "\033[1m", 4) == 0);
+            assert(strncmp(line, "\033[1;33m", 7) == 0);
             assert(strstr(line, "\033[0m\n") != NULL);
             ++marked;
         }
         if (strstr(line, "Measurement summary") != NULL) summary = true;
     }
-    assert(marked == 2 && summary);
+    assert(marked == 1 && summary);
     CFRelease(event);
     fclose(out);
 }
@@ -164,7 +163,7 @@ static void independent_buttons(void) {
     assert(ticks == 2 && m.shadow[1].pending_up);
     observe(&m, event, kCGEventRightMouseDown, 1151); /* Right: exactly 30 ms, new press. */
     assert(ticks == 2 && !m.shadow[1].pending_up);
-    assert(m.shadow[0].downstream_down && m.shadow[2].downstream_down);
+    assert(m.shadow[0].has_physical_down && m.shadow[2].has_physical_down);
 
     CFRelease(event);
     fclose(out);
