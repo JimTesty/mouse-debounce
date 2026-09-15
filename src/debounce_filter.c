@@ -1,6 +1,5 @@
 #include "debounce_filter.h"
 
-#include "debounce_sound.h"
 #include "monotonic_clock.h"
 
 #include <inttypes.h>
@@ -117,7 +116,6 @@ CGEventRef debounce_filter_handle(
 
         *action_out = action;
         if (action == DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN) {
-            if (filter->debug) debounce_sound_play();
             discard_pending_up(runtime);
             return NULL;
         }

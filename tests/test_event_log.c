@@ -10,6 +10,11 @@
 
 static uint64_t now_ns;
 static CGEventRef posted_event;
+static const TimingSettings timing = {
+    .short0_ms = {50, 50, 50},
+    .hold0_ms = {70, 70, 70},
+    .hold_ms = {25, 25, 25},
+};
 
 /* Capture replay without submitting synthetic input to the OS. */
 void CGEventPost(CGEventTapLocation tap, CGEventRef event) {
@@ -23,7 +28,7 @@ void debounce_sound_play(void) {}
 
 static void record(EventLog *log, CGEventType type, CGEventRef event, uint64_t ns) {
     now_ns = ns;
-    assert(event_log_handle(log, type, event, DEBOUNCE_PASS));
+    assert(event_log_handle(log, type, event, DEBOUNCE_PASS, &timing));
 }
 
 static void filter_annotations(void) {
@@ -32,10 +37,7 @@ static void filter_annotations(void) {
     assert(log.file != NULL);
     DebounceFilter filter;
     const bool enabled[MOUSE_BUTTON_COUNT] = {true, false, false};
-    const double short0_ms[MOUSE_BUTTON_COUNT] = {50, 50, 50};
-    const double hold0_ms[MOUSE_BUTTON_COUNT] = {70, 70, 70};
-    const double hold_ms[MOUSE_BUTTON_COUNT] = {25, 25, 25};
-    debounce_filter_init(&filter, enabled, short0_ms, hold0_ms, hold_ms);
+    debounce_filter_init(&filter, enabled, timing.short0_ms, timing.hold0_ms, timing.hold_ms);
     CGEventRef event = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseDown, CGPointZero, kCGMouseButtonLeft);
     assert(event != NULL);
     const CGEventType types[] = {kCGEventLeftMouseDown, kCGEventLeftMouseUp,
@@ -55,8 +57,20 @@ static void filter_annotations(void) {
         }
         assert(action == expected[i]);
         assert((result == NULL) == (i >= 1 && i <= 2));
-        assert(event_log_handle(&log, types[i], event, action));
+        assert(event_log_handle(&log, types[i], event, action, &timing));
     }
+    CGEventSetIntegerValueField(event, kCGMouseEventClickState, 0);
+    now_ns = 100 * 1000000;
+    CGEventSetType(event, kCGEventLeftMouseUp);
+    DebounceAction action;
+    assert(debounce_filter_handle(&filter, kCGEventLeftMouseUp, event, &action) == NULL);
+    assert(action == DEBOUNCE_HOLD_UP);
+    assert(event_log_handle(&log, kCGEventLeftMouseUp, event, action, &timing));
+    now_ns = 110 * 1000000;
+    CGEventSetType(event, kCGEventLeftMouseDown);
+    assert(debounce_filter_handle(&filter, kCGEventLeftMouseDown, event, &action) == NULL);
+    assert(action == DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN);
+    assert(event_log_handle(&log, kCGEventLeftMouseDown, event, action, &timing));
     /* No run loop or event posting: cancel any pending synthetic-test resources. */
     debounce_filter_abandon(&filter);
     CFRelease(event);
@@ -68,20 +82,24 @@ static void filter_annotations(void) {
             assert(lines == 0);
             continue;
         }
-        if (strstr(line, "<<< suspected bounce") != NULL) notes++;
-        if (lines == 2) assert(strstr(line, "pair suppressed") != NULL);
+        if (strstr(line, "DISCARDED") != NULL) notes++;
         if (lines == 2) {
-            assert(strstr(line, " (1.00ms)  <<< suspected bounce") != NULL);
+            assert(strstr(line, " (  1ms elapsed) < 70ms (hold0-ms) -- DISCARDED") != NULL);
         }
+        if (lines == 1) assert(strstr(line, " (  1ms elapsed) < 50ms") != NULL);
+        if (lines == 5) {
+            assert(strstr(line, "LEFT   up   dragged  ") != NULL);
+            assert(strstr(line, " ( 87ms elapsed) \xE2\x89\xA5 50ms") != NULL);
+        }
+        if (lines == 6) assert(strstr(line, " ( 10ms elapsed) < 25ms (hold-ms) -- DISCARDED") != NULL);
         if (lines == 4) assert(strstr(line, "RIGHT") != NULL);
         lines++;
     }
-    assert(lines == 5 && notes == 1);
+    assert(lines == 7 && notes == 2);
     /* A delayed release must retain the original event time and coordinates. */
     event = CGEventCreateMouseEvent(NULL, kCGEventLeftMouseDown,
                                    CGPointMake(123, 456), kCGMouseButtonLeft);
     assert(event != NULL);
-    DebounceAction action;
     debounce_filter_handle(&filter, kCGEventLeftMouseDown, event, &action);
     CGEventSetType(event, kCGEventLeftMouseUp);
     CGEventSetTimestamp(event, 123456789);
@@ -112,7 +130,7 @@ int main(void) {
     CGEventRef event = CGEventCreateMouseEvent(NULL, kCGEventOtherMouseDown,
                                               CGPointZero, (CGMouseButton)3);
     assert(event != NULL);
-    CGEventSetIntegerValueField(event, kCGMouseEventClickState, 2);
+    CGEventSetIntegerValueField(event, kCGMouseEventClickState, 3);
     record(&log, kCGEventLeftMouseDown, event, 0);
     record(&log, kCGEventLeftMouseUp, event, 45670000);
 
@@ -144,21 +162,22 @@ int main(void) {
             separators++;
             continue;
         }
-        int year, month, day, hour, minute, second, hundredth, length = 0;
-        assert(sscanf(line, "%4d-%2d-%2d %2d:%2d:%2d.%2d%n",
-            &year, &month, &day, &hour, &minute, &second, &hundredth, &length) == 7);
-        assert(length == 22 && line[22] == ' ');
+        int year, month, day, hour, minute, second, length = 0;
+        assert(sscanf(line, "%4d-%2d-%2d %2d:%2d:%2d%n",
+            &year, &month, &day, &hour, &minute, &second, &length) == 6);
+        assert(length == 19 && line[19] == ' ');
         assert(month >= 1 && month <= 12 && day >= 1 && day <= 31);
         assert(hour >= 0 && hour < 24 && minute >= 0 && minute < 60);
-        assert(second >= 0 && second <= 60 && hundredth >= 0 && hundredth < 100);
+        assert(second >= 0 && second <= 60);
         if (strstr(line, "WHEEL  vertical=-1 horizontal=2 axis3=0") != NULL) saw_wheel = true;
-        if (strstr(line, "OTHER  down button=3 clickState=2") != NULL) saw_other = true;
+        if (strstr(line, "OTHER3 down 3rd click") != NULL) saw_other = true;
         if (events == 1) {
-            assert(strstr(line, " (45.67ms)\n") != NULL);
+            assert(strstr(line, " ( 46ms elapsed) < 50ms\n") != NULL);
         } else if (events == 4 || events == 6) {
-            assert(strstr(line, " (100.00ms)\n") != NULL);
+            assert(strstr(line, " (100ms elapsed)") != NULL);
+            if (events == 4) assert(strstr(line, " \xE2\x89\xA5 50ms\n") != NULL);
         } else if (events == 7) {
-            assert(strstr(line, " (4154.33ms)\n") != NULL);
+            assert(strstr(line, " (4154ms elapsed)\n") != NULL);
         } else {
             assert(strstr(line, "ms)") == NULL);
         }

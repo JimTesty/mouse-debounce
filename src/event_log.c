@@ -5,17 +5,25 @@
 
 #include <errno.h>
 #include <inttypes.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <time.h>
 
-typedef struct EventLogButton {
-    int64_t number;
-    uint64_t last_event_ns;
-    struct EventLogButton *next;
-} EventLogButton;
+static const char *click_ordinal_suffix(int64_t click_state) {
+    int64_t last_two = click_state % 100;
+    if (last_two >= 11 && last_two <= 13) return "th";
+    switch (click_state % 10) {
+        case 1: return "st";
+        case 2: return "nd";
+        case 3: return "rd";
+        default: return "th";
+    }
+}
+
+static int button_slot(int64_t button) {
+    return button >= 0 && button <= 9 ? (int)button : EVENT_LOG_BUTTON_SLOTS - 1;
+}
 
 bool event_log_open(EventLog *log, const char *config_path) {
     memset(log, 0, sizeof(*log));
@@ -42,7 +50,13 @@ bool event_log_open(EventLog *log, const char *config_path) {
     return true;
 }
 
-bool event_log_handle(EventLog *log, CGEventType type, CGEventRef event, DebounceAction action) {
+bool event_log_handle(
+    EventLog *log,
+    CGEventType type,
+    CGEventRef event,
+    DebounceAction action,
+    const TimingSettings *timing
+) {
     if (log->file == NULL) return true;
     bool down = type == kCGEventLeftMouseDown || type == kCGEventRightMouseDown ||
                 type == kCGEventOtherMouseDown;
@@ -56,8 +70,7 @@ bool event_log_handle(EventLog *log, CGEventType type, CGEventRef event, Debounc
         button = type == kCGEventLeftMouseDown || type == kCGEventLeftMouseUp ? 0 :
             type == kCGEventRightMouseDown || type == kCGEventRightMouseUp ? 1 :
             CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber);
-        previous = log->buttons;
-        while (previous != NULL && previous->number != button) previous = previous->next;
+        previous = &log->buttons[button_slot(button)];
     }
 
     struct timeval wall;
@@ -75,30 +88,60 @@ bool event_log_handle(EventLog *log, CGEventType type, CGEventRef event, Debounc
     }
     log->last_event_ns = now;
     log->has_event = true;
-    fprintf(log->file, "%s.%02ld  ", date, (long)(wall.tv_usec / 10000));
+    fprintf(log->file, "%s  ", date);
     if (type == kCGEventScrollWheel) {
         fprintf(log->file, "WHEEL  vertical=%" PRId64 " horizontal=%" PRId64 " axis3=%" PRId64 "\n",
             CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis1),
             CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis2),
             CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis3));
     } else {
-        const char *name = button == 0 ? "LEFT" : button == 1 ? "RIGHT" :
-                           button == 2 ? "MIDDLE" : "OTHER";
-        fprintf(log->file, "%-6s %-4s button=%" PRId64 " clickState=%" PRId64,
-            name, down ? "down" : "up", button,
-            CGEventGetIntegerValueField(event, kCGMouseEventClickState));
-        if (previous != NULL) {
-            fprintf(log->file, " (%.2fms)", (double)(now - previous->last_event_ns) / 1e6);
+        char other_name[16];
+        const char *name;
+        if (button == 0) {
+            name = "LEFT";
+        } else if (button == 1) {
+            name = "RIGHT";
+        } else if (button == 2) {
+            name = "MIDDLE";
+        } else if (button >= 3 && button <= 9) {
+            snprintf(other_name, sizeof(other_name), "OTHER%" PRId64, button);
+            name = other_name;
         } else {
-            previous = calloc(1, sizeof(*previous));
-            if (previous == NULL) return false;
-            previous->number = button;
-            previous->next = log->buttons;
-            log->buttons = previous;
+            name = "OTHERX";
+        }
+        int64_t click_state = CGEventGetIntegerValueField(event, kCGMouseEventClickState);
+        fprintf(log->file, "%-6s %-4s ", name, down ? "down" : "up");
+        if (click_state == 0) {
+            fputs("dragged  ", log->file);
+        } else {
+            fprintf(log->file, "%" PRId64 "%s click", click_state,
+                click_ordinal_suffix(click_state));
+        }
+        if (previous->has_event) {
+            fprintf(log->file, " (%3.0fms elapsed)", (double)(now - previous->last_event_ns) / 1e6);
+        }
+        if (up && timing != NULL && button >= 0 && button < MOUSE_BUTTON_COUNT) {
+            double short0_ms = timing->short0_ms[button];
+            bool short_press = previous->has_down && now >= previous->last_down_ns &&
+                (double)(now - previous->last_down_ns) / 1e6 < short0_ms;
+            fprintf(log->file, short_press ? " < %.0fms" : " \xE2\x89\xA5 %.0fms", short0_ms);
+            previous->pending_uses_hold0 = short_press;
+        } else if (up) {
+            previous->pending_uses_hold0 = false;
         }
         previous->last_event_ns = now;
+        previous->has_event = true;
         if (action == DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN) {
-            fputs("  <<< suspected bounce (Up-Down within selected hold window; pair suppressed)", log->file);
+            bool uses_hold0 = previous->pending_uses_hold0;
+            double hold_ms = timing != NULL && button >= 0 && button < MOUSE_BUTTON_COUNT
+                ? (uses_hold0 ? timing->hold0_ms[button] : timing->hold_ms[button]) : 0.0;
+            fprintf(log->file, " < %.0fms (%s) -- DISCARDED", hold_ms,
+                uses_hold0 ? "hold0-ms" : "hold-ms");
+        }
+        if (down) {
+            previous->has_down = true;
+            previous->last_down_ns = now;
+            previous->pending_uses_hold0 = false;
         }
         fputc('\n', log->file);
     }
@@ -108,9 +151,4 @@ bool event_log_handle(EventLog *log, CGEventType type, CGEventRef event, Debounc
 void event_log_close(EventLog *log) {
     if (log->file != NULL) fclose(log->file);
     log->file = NULL;
-    while (log->buttons != NULL) {
-        EventLogButton *next = log->buttons->next;
-        free(log->buttons);
-        log->buttons = next;
-    }
 }

@@ -32,6 +32,40 @@ typedef struct {
     bool pid_file_written;
 } App;
 
+static bool is_button_down_type(CGEventType type) {
+    return type == kCGEventLeftMouseDown || type == kCGEventRightMouseDown ||
+           type == kCGEventOtherMouseDown;
+}
+
+static bool is_button_up_type(CGEventType type) {
+    return type == kCGEventLeftMouseUp || type == kCGEventRightMouseUp ||
+           type == kCGEventOtherMouseUp;
+}
+
+static void play_debug_event_sound(
+    const App *app,
+    CGEventType type,
+    CGEventRef event,
+    DebounceAction action
+) {
+    if (app->options.debug) {
+        if (action == DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN) {
+            debounce_sound_play();
+        }
+        if (is_button_down_type(type)) {
+            int64_t click_state = CGEventGetIntegerValueField(event, kCGMouseEventClickState);
+            if (click_state > 1) debounce_sound_play_click(click_state);
+        } else if (is_button_up_type(type) &&
+                   CGEventGetIntegerValueField(event, kCGMouseEventClickState) == 0) {
+            debounce_sound_play_dragged();
+        }
+    }
+    if (app->options.debug_wheel && type == kCGEventScrollWheel &&
+        CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis1) < 0) {
+        debounce_sound_play();
+    }
+}
+
 static CGEventRef app_event_handler(
     void *context,
     CGEventTapProxy proxy,
@@ -42,17 +76,15 @@ static CGEventRef app_event_handler(
     (void)proxy;
     /* Reposted releases aren't new input; don't log or analyze them twice. */
     if (debounce_filter_is_owned_event(event)) return event;
-    if (app->options.debug_wheel && type == kCGEventScrollWheel &&
-        CGEventGetIntegerValueField(event, kCGScrollWheelEventDeltaAxis1) < 0) {
-        debounce_sound_play();
-    }
     if (app->options.mode == APP_MODE_MEASURE) {
         measurement_handle(&app->measurement, type, event);
+        play_debug_event_sound(app, type, event, DEBOUNCE_PASS);
         return event;
     }
     DebounceAction action;
     CGEventRef filtered = debounce_filter_handle(&app->filter, type, event, &action);
-    if (!event_log_handle(&app->event_log, type, event, action)) {
+    play_debug_event_sound(app, type, event, action);
+    if (!event_log_handle(&app->event_log, type, event, action, &app->options.timing)) {
         fprintf(app->output, "Could not write event log; logging disabled for this run.\n");
         event_log_close(&app->event_log);
     }
@@ -277,7 +309,6 @@ int main(int argc, char **argv) {
             app.options.timing.hold0_ms,
             app.options.timing.hold_ms
         );
-        app.filter.debug = app.options.debug;
     } else {
         measurement_init(&app.measurement, app.options.buttons, &app.options.timing, app.output);
     }

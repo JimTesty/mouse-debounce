@@ -2,7 +2,7 @@
 
 A small, source-auditable macOS utility for repairing worn mouse-button chatter in software.
 
-Version **0.6.0** provides:
+It provides:
 
 - mouse-button release-bounce repair, including glitches during long holds;
 - minimal CoreGraphics event-tap plumbing inspired by Vorssaint;
@@ -188,7 +188,8 @@ are now held for `hold-ms` instead of passing immediately. Saving rewrites the
 alias as canonical `short0-ms`.
 
 `--sound-volume` accepts `0` through `1` and is saved like the other settings;
-`0` silences all sounds. `--debug` enables startup and filter diagnostic sounds.
+`0` silences all sounds. `--debug` enables startup, click, drag, and filter
+diagnostic sounds.
 `--debug-wheel` independently enables a sound on each wheel-down event; it does
 not require `--debug`. With neither switch, normal filtering is silent. Both
 settings persist: use `tools/mousedebouncectl save --debug` to enable filter
@@ -214,38 +215,21 @@ tools/mousedebouncectl config
 ## Event logging
 
 Use `tools/mousedebouncectl save --log` to enable logging during normal filtering.
-Button Down/Up events (including extra buttons) and scrolling are appended to
-`events.log` in the config folder:
+Raw button and wheel events are appended to `events.log` in the config folder:
 
 ```text
 ~/Library/Application Support/MouseDebounce/events.log
 ```
 
-With `--config PATH`, the log goes beside that config file. Movement and dragging
-are not logged. All raw button events are logged, even for buttons not enabled
-for filtering. Entries include suppressed events but exclude releases replayed
-by the filter. A Down suppressed as part of an Up-Down pair gets a same-line
-`<<< suspected bounce` note. Consecutive Downs are not suppressed. The earlier
-Up remains in the log; it cannot be identified as part of a pair until the
-returning Down arrives. These notes describe the filter's classification, not
-proof of a hardware glitch.
+With `--config PATH`, it goes beside that config file. Movement and dragging are
+not logged. Suppressed raw events remain visible, while releases replayed by the
+filter are omitted. A suspected bounce is marked on the corresponding line.
+Button lines include per-button elapsed time and, for configured buttons, the
+`short0-ms` comparison; `-----` separates idle periods.
 
-Button entries end with elapsed time since that same button's previous raw event,
-such as ` (45.67ms)`, before any glitch note. Other buttons and scrolling do not
-reset this timer. A button's first event in each run has no elapsed time.
-
-Each event starts with local date and time to hundredths of a second, such as
-`2026-09-10 17:24:56.78`.
-A `-----` line precedes a Down when more than one second has passed since the
-previous logged event (button or wheel). Movement does not reset this interval.
-The first logged event in a run also gets a separator, even if it is scrolling.
-Separators use the shared last-event timestamp, not per-button timestamps;
-switching buttons does not by itself start a new group.
-
-`--log` is saved and has no effect in `measure` mode. Use
-`tools/mousedebouncectl save --no-log` to disable it. Logs are not rotated automatically;
-for long sessions, check disk usage and remove unneeded logs after stopping the
-service. Logging records input activity and adds file-writing overhead.
+`--log` is saved and applies only to normal filtering. Use
+`tools/mousedebouncectl save --no-log` to disable it. Logs are appended and are
+not rotated automatically.
 
 ## Measurement
 
@@ -306,7 +290,7 @@ If the mouse happens to behave perfectly during the session, the button recommen
 
 ## Wheel-miss diagnostics
 
-Version 0.6 still **does not synthesize missing wheel movement**. It only diagnoses likely missing pulses during locally stable discrete-wheel runs.
+MouseDebounce **does not synthesize missing wheel movement**. It only diagnoses likely missing pulses during locally stable discrete-wheel runs.
 
 The detector keeps a short rolling history of same-direction inter-event gaps. Once local cadence is sufficiently stable, a gap close to an integer multiple (2x through 10x) of that cadence can be flagged, for example:
 
