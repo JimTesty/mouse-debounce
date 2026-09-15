@@ -57,7 +57,7 @@ The filter repairs only an **Up -> Down** pair.
 
 Whenever a button **Up** event arrives, it is withheld for some time (either `hold0-ms` or `hold-ms`), to determine whether it forms a short pulse with a following **Down**. How long to wait is determined by whether the previous **Down-Up** duration is <`short0-ms`. If the following **Down** does form a short pulse, the Up-Down pair is discarded, keeping the press uninterrupted. Otherwise, the Up event is delivered.
 
-Specifically, we are postponing each Up event by either `hold0-ms` or `hold-ms`, depending on whether the previous Down event was within `short0-ms` ago. If the deadline expires before the next Down event arrives, the Up event is delivered. Otherwise the pair is discarded. Every physical Down updates the time used for the next Up, even when that Down was discarded. Down events are never delayed.
+Specifically, we postpone each Up event by `hold0-ms` or `hold-ms`, depending on whether the previous Down event occurred less than `short0-ms` ago. If the deadline expires before the next Down event arrives, the Up event is delivered; otherwise the Up-Down pair is discarded. Every physical Down becomes the reference for the next Up, even when discarded. Down events are never delayed.
 
 Events do not need to alternate, and all timing state is per button. Consecutive
 Downs pass immediately and each becomes that button's latest Down. Every Up uses
