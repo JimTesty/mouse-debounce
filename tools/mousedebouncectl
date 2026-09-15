@@ -332,6 +332,7 @@ case "${1:-}" in
         ;;
     config)
         if [ -f "$CONFIG" ]; then
+            echo "$CONFIG"
             cat "$CONFIG"
         else
             echo "No saved config: $CONFIG"
