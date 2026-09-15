@@ -14,6 +14,7 @@ typedef enum {
 typedef struct {
     bool has_physical_down;
     bool pending_up;
+    bool pending_uses_hold0;
     uint64_t last_physical_down_ns;
     uint64_t pending_deadline_ns;
 } DebounceState;
@@ -28,6 +29,5 @@ DebounceAction debounce_on_up(
     uint64_t hold_ns
 );
 void debounce_pending_emitted(DebounceState *state);
-void debounce_reset(DebounceState *state);
 
 #endif

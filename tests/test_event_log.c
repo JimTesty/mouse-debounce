@@ -47,7 +47,7 @@ static void filter_annotations(void) {
         CGEventSetType(event, types[i]);
         DebounceAction action;
         CFAbsoluteTime before = CFAbsoluteTimeGetCurrent();
-        CGEventRef result = debounce_filter_handle(&filter, NULL, types[i], event, &action);
+        CGEventRef result = debounce_filter_handle(&filter, types[i], event, &action);
         CFAbsoluteTime after = CFAbsoluteTimeGetCurrent();
         if (i == 1) {
             CFAbsoluteTime fire = CFRunLoopTimerGetNextFireDate(filter.button[0].pending_timer);
@@ -82,10 +82,10 @@ static void filter_annotations(void) {
                                    CGPointMake(123, 456), kCGMouseButtonLeft);
     assert(event != NULL);
     DebounceAction action;
-    debounce_filter_handle(&filter, NULL, kCGEventLeftMouseDown, event, &action);
+    debounce_filter_handle(&filter, kCGEventLeftMouseDown, event, &action);
     CGEventSetType(event, kCGEventLeftMouseUp);
     CGEventSetTimestamp(event, 123456789);
-    assert(debounce_filter_handle(&filter, NULL, kCGEventLeftMouseUp, event, &action) == NULL);
+    assert(debounce_filter_handle(&filter, kCGEventLeftMouseUp, event, &action) == NULL);
     CGEventSetTimestamp(event, 987654321);
     CGEventSetLocation(event, CGPointMake(789, 987));
     debounce_filter_flush(&filter);

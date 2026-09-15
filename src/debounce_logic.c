@@ -11,6 +11,7 @@ DebounceAction debounce_on_down(DebounceState *state, uint64_t now_ns) {
         if (now_ns < state->pending_deadline_ns) {
             /* The withheld Up + returning Down are one bounce pair. */
             state->pending_up = false;
+            state->pending_uses_hold0 = false;
             state->pending_deadline_ns = 0;
             state->has_physical_down = true;
             state->last_physical_down_ns = now_ns;
@@ -41,17 +42,16 @@ DebounceAction debounce_on_up(
     }
 
     /* Short presses get their own window; every other press uses the normal one. */
+    state->pending_uses_hold0 = held_ns < short0_ns;
     state->pending_up = true;
-    state->pending_deadline_ns = now_ns + (held_ns < short0_ns ? hold0_ns : hold_ns);
+    state->pending_deadline_ns = now_ns +
+        (state->pending_uses_hold0 ? hold0_ns : hold_ns);
     return DEBOUNCE_HOLD_UP;
 }
 
 void debounce_pending_emitted(DebounceState *state) {
     state->pending_up = false;
+    state->pending_uses_hold0 = false;
     state->pending_deadline_ns = 0;
     /* Keep the latest Down because physical events need not alternate. */
-}
-
-void debounce_reset(DebounceState *state) {
-    debounce_state_init(state);
 }

@@ -12,14 +12,17 @@ static void combined_windows(void) {
     /* Initial chatter: 38.49 ms press, then a 31.98 ms release gap. */
     assert(debounce_on_down(&s, 0) == DEBOUNCE_PASS);
     assert(debounce_on_up(&s, MS(38.49), MS(50), MS(70), MS(25)) == DEBOUNCE_HOLD_UP);
+    assert(s.pending_uses_hold0);
     assert(s.pending_deadline_ns == MS(108.49));
     assert(debounce_on_down(&s, MS(70.47)) == DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN);
+    assert(!s.pending_uses_hold0);
     /* A returning physical Down resets the short-press clock too. */
     assert(debounce_on_up(&s, MS(100), MS(50), MS(70), MS(25)) == DEBOUNCE_HOLD_UP);
     assert(s.pending_deadline_ns == MS(170));
     assert(debounce_on_down(&s, MS(160)) == DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN);
     /* Long-hold interruption uses the smaller window, in the same press. */
     assert(debounce_on_up(&s, MS(1000), MS(50), MS(70), MS(25)) == DEBOUNCE_HOLD_UP);
+    assert(!s.pending_uses_hold0);
     assert(s.pending_deadline_ns == MS(1025));
     assert(debounce_on_down(&s, MS(1020)) == DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN);
     assert(debounce_on_up(&s, MS(1200), MS(50), MS(70), MS(25)) == DEBOUNCE_HOLD_UP);
@@ -34,6 +37,7 @@ static void threshold_boundaries(void) {
     debounce_state_init(&s);
     assert(debounce_on_down(&s, MS(100)) == DEBOUNCE_PASS);
     assert(debounce_on_up(&s, MS(150), MS(50), MS(40), MS(25)) == DEBOUNCE_HOLD_UP);
+    assert(!s.pending_uses_hold0);
     assert(s.pending_deadline_ns == MS(175)); /* Exactly short0 uses normal hold. */
     assert(debounce_on_down(&s, MS(175)) == DEBOUNCE_EXPIRE_PENDING_AND_RETRY_DOWN);
     debounce_pending_emitted(&s);
@@ -51,6 +55,7 @@ static void zero_short0_uses_normal_window(void) {
         DebounceState s;
         debounce_state_init(&s);
         assert(debounce_on_up(&s, MS(1), 0, MS(70), MS(25)) == DEBOUNCE_HOLD_UP);
+        assert(!s.pending_uses_hold0);
         assert(s.pending_deadline_ns == MS(26));
         debounce_pending_emitted(&s);
         assert(debounce_on_down(&s, MS(100)) == DEBOUNCE_PASS);
@@ -87,6 +92,7 @@ static void nonalternating_events(void) {
 
     /* With no earlier Down, an Up uses the normal window. A repeated Up does too. */
     assert(debounce_on_up(&left, MS(100), MS(50), MS(40), MS(25)) == DEBOUNCE_HOLD_UP);
+    assert(!left.pending_uses_hold0);
     assert(left.pending_deadline_ns == MS(125));
     assert(debounce_on_up(&left, MS(110), MS(50), MS(40), MS(25)) == DEBOUNCE_HOLD_UP);
     assert(left.pending_deadline_ns == MS(135));

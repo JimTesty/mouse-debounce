@@ -98,7 +98,7 @@ bool event_log_handle(EventLog *log, CGEventType type, CGEventRef event, Debounc
         }
         previous->last_event_ns = now;
         if (action == DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN) {
-            fputs("  <<< suspected bounce (Up/Down within selected hold window; pair suppressed)", log->file);
+            fputs("  <<< suspected bounce (Up-Down within selected hold window; pair suppressed)", log->file);
         }
         fputc('\n', log->file);
     }

@@ -31,7 +31,7 @@ Development builds use ad-hoc signing by default. To reduce repeated Accessibili
 ## Two common glitch patterns
 
 1. **Chatter around the initial press.** You press once, but the switch rapidly
-   reports `Down -> Up -> Down`. The extra Up/Down pair can look like a second click.
+   reports `Down -> Up -> Down`. The extra Up-Down pair can look like a second click.
 2. **A brief release during a hold or drag.** You are still pressing, possibly
    lightly, but the switch momentarily reports Up and then Down, interrupting the
    hold or drag. For example, after roughly a one-second press it may report Up,
@@ -203,7 +203,7 @@ Button Down/Up events (including extra buttons) and scrolling are appended to
 With `--config PATH`, the log goes beside that config file. Movement and dragging
 are not logged. All raw button events are logged, even for buttons not enabled
 for filtering. Entries include suppressed events but exclude releases replayed
-by the filter. A Down suppressed as part of an Up/Down pair gets a same-line
+by the filter. A Down suppressed as part of an Up-Down pair gets a same-line
 `<<< suspected bounce` note. Consecutive Downs are not suppressed. The earlier
 Up remains in the log; it cannot be identified as part of a pair until the
 returning Down arrives. These notes describe the filter's classification, not
@@ -263,9 +263,9 @@ Raw-event measurement alerts by sound when it sees a suspected button bounce and
 prints that event's entire terminal line in bold (`--sound-volume 0` mutes it).
 It calls the same debounce functions as filtering, with separate state and no
 input suppression. An Up alone is not an alert: a returning Down within the
-selected hold window triggers it. Pairs found through either `hold0-ms` or
-`hold-ms` are yellow as well as bold. Duplicate Downs also trigger alerts and
-are bold only. The line names the reason in both the terminal and plain-text log.
+selected hold window triggers it. Pairs found through `hold0-ms` are yellow as
+well as bold; pairs found through `hold-ms` are bold only. The line names the
+selected delay in the terminal and the reason in the plain-text log.
 These warnings mean “the filter would suppress this,” not proof of faulty hardware.
 Measurement uses your saved timing and volume settings; pass timing options to
 override them, or `--no-config` to try the defaults. `--debug` is not needed for
@@ -381,7 +381,7 @@ make test
 
 Portable tests cover debounce state transitions, timing inheritance, CLI/config parsing and save/load behavior, IQR/threshold statistics, and missing-wheel-pulse cadence logic.
 
-`make test-measurement` additionally checks measurement alerts and bold markers
+`make test-measurement` additionally checks measurement alerts and bold/yellow markers
 with synthetic CoreGraphics events. It does not intercept input or play audio.
 `make test-event-log` checks log formatting, idle separators, and appending using
 synthetic events and temporary files, without accessing your saved config.

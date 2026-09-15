@@ -43,7 +43,8 @@ void measurement_print_instructions(Measurement *m, double duration_seconds) {
     fprintf(m->out,
         "Measurement uses CLOCK_UPTIME_RAW at event-tap receipt; CGEvent timestamps are not\n"
         "used for debounce timing. Nothing is modified.\n"
-        "Suspected button bounce is marked in bold and sounds a tick (volume 0 mutes).\n"
+        "Suspected button bounce is bold; hold0-ms detections are also yellow, and\n"
+        "each detection sounds a tick (volume 0 mutes).\n"
         "These are events the current filter settings would suppress, not proof of a fault.\n"
         "Presses shorter than short0-ms use hold0-ms; all others use hold-ms.\n"
         "Ctrl-C ends the session and prints the same summary as the timer.\n\n"
@@ -71,12 +72,18 @@ void measurement_print_instructions(Measurement *m, double duration_seconds) {
     fflush(m->out);
 }
 
-static DebounceAction button_filter_action(Measurement *m, MouseButtonEvent mouse, uint64_t now_ns) {
+static DebounceAction button_filter_action(
+    Measurement *m,
+    MouseButtonEvent mouse,
+    uint64_t now_ns,
+    bool *uses_hold0
+) {
     DebounceState *state = &m->shadow[mouse.button];
     /* Simulate timer expiry before this event, without posting or withholding input. */
     if (state->pending_up && now_ns >= state->pending_deadline_ns) {
         debounce_pending_emitted(state);
     }
+    *uses_hold0 = mouse.is_down && state->pending_up && state->pending_uses_hold0;
     return mouse.is_down
         ? debounce_on_down(state, now_ns)
         : debounce_on_up(state, now_ns,
@@ -92,10 +99,11 @@ static void handle_button(Measurement *m, CGEventType type, CGEventRef event, ui
     if (m->first_ns == 0) m->first_ns = now_ns;
     double elapsed_s = elapsed_seconds(m, now_ns);
     int64_t click_state = CGEventGetIntegerValueField(event, kCGMouseEventClickState);
-    DebounceAction action = button_filter_action(m, mouse, now_ns);
+    bool uses_hold0;
+    DebounceAction action = button_filter_action(m, mouse, now_ns, &uses_hold0);
     bool bounce_pair = action == DEBOUNCE_CANCEL_PENDING_AND_DROP_DOWN;
     if (bounce_pair) {
-        fputs("\033[1;33m", m->out);
+        fputs(uses_hold0 ? "\033[1;33m" : "\033[1m", m->out);
         debounce_sound_play();
     }
 
@@ -127,8 +135,8 @@ static void handle_button(Measurement *m, CGEventType type, CGEventRef event, ui
         }
     }
     if (bounce_pair) {
-        fputs("  <<< suspected bounce (Up/Down within selected hold window; filter would suppress)\033[0m",
-            m->out);
+        fprintf(m->out, "  <<< suspected bounce (Up-Down within %s; filter would suppress)\033[0m",
+            uses_hold0 ? "hold0-ms" : "hold-ms");
     }
     fputc('\n', m->out);
     fflush(m->out);

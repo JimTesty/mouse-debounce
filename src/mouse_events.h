@@ -8,7 +8,6 @@
 
 typedef struct {
     bool is_down;
-    bool is_up;
     MouseButton button;
 } MouseButtonEvent;
 

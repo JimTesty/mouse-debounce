@@ -39,6 +39,7 @@ static CGEventRef app_event_handler(
     CGEventRef event
 ) {
     App *app = (App *)context;
+    (void)proxy;
     /* Reposted releases aren't new input; don't log or analyze them twice. */
     if (debounce_filter_is_owned_event(event)) return event;
     if (app->options.debug_wheel && type == kCGEventScrollWheel &&
@@ -50,7 +51,7 @@ static CGEventRef app_event_handler(
         return event;
     }
     DebounceAction action;
-    CGEventRef filtered = debounce_filter_handle(&app->filter, proxy, type, event, &action);
+    CGEventRef filtered = debounce_filter_handle(&app->filter, type, event, &action);
     if (!event_log_handle(&app->event_log, type, event, action)) {
         fprintf(app->output, "Could not write event log; logging disabled for this run.\n");
         event_log_close(&app->event_log);

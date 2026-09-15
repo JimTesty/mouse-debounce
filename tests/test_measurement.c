@@ -50,6 +50,7 @@ static void short_press_alerts(void) {
     while (fgets(line, sizeof(line), out) != NULL) {
         if (strstr(line, "suspected bounce") != NULL) {
             assert(strncmp(line, "\033[1;33m", 7) == 0);
+            assert(strstr(line, "Up-Down within hold0-ms") != NULL);
             assert(strstr(line, "\033[0m\n") != NULL);
             ++marked;
         }
@@ -92,8 +93,8 @@ static void reported_long_hold_bounces(double short0_ms) {
     bool preserved_setting = false;
     while (fgets(line, sizeof(line), out) != NULL) {
         if (strstr(line, "suspected bounce") != NULL) {
-            assert(strncmp(line, "\033[1;33m", 7) == 0);
-            assert(strstr(line, "Up/Down within selected hold window") != NULL);
+            assert(strncmp(line, "\033[1m", 4) == 0);
+            assert(strstr(line, "Up-Down within hold-ms") != NULL);
             assert(strstr(line, "\033[0m\n") != NULL);
             ++marked;
         }
@@ -129,6 +130,16 @@ static void combined_windows(void) {
     observe(&m, event, kCGEventLeftMouseUp, 588.64);
     observe(&m, event, kCGEventLeftMouseDown, 608.64);
     assert(ticks == 2); /* Long-hold interruption caught by ordinary hold. */
+
+    rewind(out);
+    char line[1024];
+    unsigned yellow = 0, bold_only = 0;
+    while (fgets(line, sizeof(line), out) != NULL) {
+        if (strstr(line, "suspected bounce") == NULL) continue;
+        if (strncmp(line, "\033[1;33m", 7) == 0) yellow++;
+        if (strncmp(line, "\033[1m", 4) == 0) bold_only++;
+    }
+    assert(yellow == 1 && bold_only == 1);
     CFRelease(event);
     fclose(out);
 }

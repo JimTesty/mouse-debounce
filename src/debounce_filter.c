@@ -47,8 +47,7 @@ static void timer_callback(CFRunLoopTimerRef timer, void *info) {
     post_owned_up((DebounceButtonRuntime *)info);
 }
 
-static bool schedule_timer(DebounceFilter *filter, MouseButton button) {
-    DebounceButtonRuntime *runtime = &filter->button[button];
+static bool schedule_timer(DebounceButtonRuntime *runtime) {
     cancel_timer(runtime);
 
     CFRunLoopTimerContext context = {0};
@@ -90,12 +89,10 @@ bool debounce_filter_is_owned_event(CGEventRef event) {
 
 CGEventRef debounce_filter_handle(
     DebounceFilter *filter,
-    CGEventTapProxy proxy,
     CGEventType type,
     CGEventRef event,
     DebounceAction *action_out
 ) {
-    (void)proxy;
     *action_out = DEBOUNCE_PASS;
 
     if (debounce_filter_is_owned_event(event)) {
@@ -143,7 +140,7 @@ CGEventRef debounce_filter_handle(
         return event;
     }
 
-    if (!schedule_timer(filter, mouse.button)) {
+    if (!schedule_timer(runtime)) {
         /* Timer failure: fail open immediately. */
         post_owned_up(runtime);
         *action_out = DEBOUNCE_PASS;

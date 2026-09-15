@@ -37,7 +37,6 @@ bool debounce_filter_is_owned_event(CGEventRef event);
 /* Reports the decision for logging without running bounce detection again. */
 CGEventRef debounce_filter_handle(
     DebounceFilter *filter,
-    CGEventTapProxy proxy,
     CGEventType type,
     CGEventRef event,
     DebounceAction *action_out

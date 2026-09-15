@@ -2,7 +2,6 @@
 
 bool mouse_button_from_event(CGEventType type, CGEventRef event, MouseButtonEvent *out) {
     out->is_down = false;
-    out->is_up = false;
 
     switch (type) {
         case kCGEventLeftMouseDown:
@@ -10,7 +9,6 @@ bool mouse_button_from_event(CGEventType type, CGEventRef event, MouseButtonEven
             out->button = MOUSE_BUTTON_LEFT;
             return true;
         case kCGEventLeftMouseUp:
-            out->is_up = true;
             out->button = MOUSE_BUTTON_LEFT;
             return true;
         case kCGEventRightMouseDown:
@@ -18,7 +16,6 @@ bool mouse_button_from_event(CGEventType type, CGEventRef event, MouseButtonEven
             out->button = MOUSE_BUTTON_RIGHT;
             return true;
         case kCGEventRightMouseUp:
-            out->is_up = true;
             out->button = MOUSE_BUTTON_RIGHT;
             return true;
         case kCGEventOtherMouseDown:
@@ -27,7 +24,6 @@ bool mouse_button_from_event(CGEventType type, CGEventRef event, MouseButtonEven
             if (n != 2) return false;
             out->button = MOUSE_BUTTON_MIDDLE;
             out->is_down = type == kCGEventOtherMouseDown;
-            out->is_up = !out->is_down;
             return true;
         }
         default:
