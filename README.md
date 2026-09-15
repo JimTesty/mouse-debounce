@@ -40,6 +40,10 @@ Development builds use ad-hoc signing by default. To reduce repeated Accessibili
 In both cases, the problem is an unintended Up followed by a quick return to
 Down. The filter repairs that pair as described below.
 
+A single setting cannot aggressively target both patterns without also merging
+some genuine multi-clicks. The defaults prioritize the second pattern. Settings
+for both patterns are explained below, with the defaults shown first.
+
 ## Debounce algorithm
 
 The filter repairs only an **Up -> Down** pair.
@@ -65,35 +69,52 @@ that latest Down, even if the previous event was another Up. Before a button's
 first Down, the Down-to-Up duration is treated as infinite, so an Up uses
 `hold-ms`.
 
-For example, the defaults `--short0-ms 50 --hold0-ms 40 --hold-ms 25` catch a
-32 ms return after a short press but let the same gap begin a new press after a
-long hold:
+For example, the defaults `--short0-ms 130 --hold0-ms 15 --hold-ms 90` let a
+35 ms return after a short press begin a new press, but discard a 70 ms
+interruption during a long hold:
 
 ```text
    0 ms  Down -> delivered immediately
-  30 ms  Up   -> recent Down, withheld for 40 ms
-  62 ms  Down -> discard this Down and the withheld Up; record this physical Down
- 100 ms  Up   -> recent Down, withheld for 40 ms
- 140 ms       -> no Down came, so deliver the Up
-1000 ms  Down -> delivered immediately
-2000 ms  Up   -> older Down, withheld for 25 ms
-2025 ms       -> no Down came, so deliver the Up
-2032 ms  Down -> delivered immediately
+ 100 ms  Up   -> recent Down, withheld for 15 ms
+ 115 ms       -> no Down came, so deliver the Up
+ 135 ms  Down -> delivered immediately
+1000 ms  Up   -> older Down, withheld for 90 ms
+1070 ms  Down -> discard this Down and the withheld Up; record this physical Down
+2000 ms  Up   -> older Down, withheld for 90 ms
+2090 ms       -> no Down came, so deliver the Up
 ```
 
-Defaults:
+Defaults (solving the second glitch pattern):
 
 ```text
-short0-ms = 50
-hold0-ms  = 40
-hold-ms   = 25
+short0-ms = 130
+hold0-ms  = 15
+hold-ms   = 90
 buttons   = left,right,middle
 ```
 
-The defaults give an Up the longer 40 ms delay only when it arrives within 50 ms
-of the latest Down. Every other Up gets the 25 ms delay. Longer delays catch
-longer glitches, but add the same release latency and can hide an intentional
-re-click whose Up-to-Down gap is shorter than the delay.
+These defaults target **a brief release during a hold or drag**. Most genuine
+clicks finish within `short0-ms=130`, so their Up events use the short
+`hold0-ms=15` delay. Up events after longer presses use `hold-ms=90`, catching
+longer interruptions during a hold. An intentional re-click within 90 ms after
+a long press will be mistakenly merged.
+
+For a mouse whose main problem is **chatter around the initial press** (the first
+glitch pattern), use:
+
+```text
+short0-ms = 70
+hold0-ms  = 60
+hold-ms   = 15
+```
+
+To catch type #1 glitches, `short0-ms` must be high enough to include the initial
+chatter. Unfortunately, that also routes many genuine faster multi-clicks
+through the long `hold0-ms`, which discards many of them as if they were
+glitches. Depending on clicking speed, this may affect a large share of genuine
+multi-clicks. Slower multi-clicks are routed through the short `hold-ms` instead
+and remain intact. Because `hold-ms` is short, this preset does not catch longer
+type #2 interruptions.
 
 If genuine quick re-clicks are being discarded, reduce the delay that applies:
 `hold0-ms` for presses shorter than `short0-ms`, or `hold-ms` for longer presses.
@@ -128,8 +149,8 @@ Global options set all buttons:
 
 Later arguments win. If a per-button value is unset and no global value supplied,
 it inherits the arithmetic mean of explicitly configured sibling buttons for
-that same metric. With no configured siblings, the defaults are `short0-ms=50`,
-`hold0-ms=40`, and `hold-ms=25`. Explicit zero counts as a configured value in
+that same metric. With no configured siblings, the defaults are `short0-ms=130`,
+`hold0-ms=15`, and `hold-ms=90`. Explicit zero counts as a configured value in
 inheritance, not as “unset.”
 
 The old `--short-ms`, `--left-short-ms`, `--right-short-ms`, and
@@ -153,9 +174,9 @@ The format is deliberately just app arguments plus optional `#` comments:
 
 ```text
 --buttons left,right,middle
---short0-ms 50
---hold0-ms 40
---hold-ms 25
+--short0-ms 130
+--hold0-ms 15
+--hold-ms 90
 --sound-volume 0.1
 ```
 
@@ -179,7 +200,7 @@ are omitted from the saved config, rather than written as `--no-*` options.
 Recommended save command:
 
 ```sh
-tools/mousedebouncectl save --short0-ms 50 --hold0-ms 70 --hold-ms 30
+tools/mousedebouncectl save --short0-ms 130 --hold0-ms 15 --hold-ms 90
 ```
 
 This calls `--save-config-and-exit` and prints the saved config file, so no extra long-running process remains. If the launchd service was running, the controller restarts it so the new config takes effect.

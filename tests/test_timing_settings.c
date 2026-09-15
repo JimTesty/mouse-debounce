@@ -9,9 +9,9 @@ static void defaults(void) {
     timing_draft_init(&d);
     timing_resolve(&d, &s);
     for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) {
-        assert(s.short0_ms[i] == 50.0);
-        assert(s.hold0_ms[i] == 40.0);
-        assert(s.hold_ms[i] == 25.0);
+        assert(s.short0_ms[i] == 130.0);
+        assert(s.hold0_ms[i] == 15.0);
+        assert(s.hold_ms[i] == 90.0);
     }
 }
 
