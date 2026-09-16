@@ -125,7 +125,7 @@ static void precedence_and_roundtrip(void) {
         assert(loaded.timing.hold_ms[i] == options.timing.hold_ms[i]);
         assert(loaded.buttons[i] == options.buttons[i]);
     }
-    char *disable[] = {"test", "--config", path, "--no-debug", "--no-debug-drag-sounds",
+    char *disable[] = {"test", "--config", path, "--no-debug", "--no-debug-drag",
                        "--no-debug-wheel", "--no-log"};
     assert(options_parse(7, disable, &loaded));
     assert(!loaded.debug);

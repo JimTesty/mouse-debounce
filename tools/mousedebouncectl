@@ -45,21 +45,12 @@ Application options (accepted by save; measure passes through its extra options)
                        set timing for the right button
   --middle-short0-ms N / --middle-hold0-ms N / --middle-hold-ms N
                        set timing for the middle button
-  --short-ms N         compatibility alias for --short0-ms
-  --left-short-ms N    compatibility alias for --left-short0-ms
-  --right-short-ms N   compatibility alias for --right-short0-ms
-  --middle-short-ms N  compatibility alias for --middle-short0-ms
   --buttons LIST       enable a comma-separated button list
   --sound-volume N     set sound volume from 0 (mute) to 1
-  --debug              enable startup, click, and filter diagnostic sounds
-  --no-debug           disable diagnostic sounds
-  --debug-drag-sounds enable dragged-release sounds with --debug
-  --no-debug-drag-sounds
-                       disable saved dragged-release sounds
-  --debug-wheel        enable wheel-event sounds
-  --no-debug-wheel     disable wheel-event sounds
-  --log                append raw events to events.log (filter mode)
-  --no-log             disable event logging
+  --(no-)debug         enable/disable startup, click, and filter diagnostic sounds
+  --(no-)debug-drag    enable/disable dragged-release sounds with --debug
+  --(no-)debug-wheel   enable/disable wheel-event sounds
+  --(no-)log           enable/disable event logging (filter mode)
   --config PATH        use a specific config.args file
   --no-config          ignore the default config file
   --output PATH        write measurement output to PATH

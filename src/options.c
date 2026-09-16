@@ -45,8 +45,8 @@ void options_print_usage(const char *argv0) {
         "  --sound-volume N   alert/debug tick volume, 0..1 (default 0.1; 0 mutes)\n"
         "  --debug            play startup, click, and filter diagnostic tones\n"
         "  --no-debug         disable diagnostic tones (debug setting is saved)\n"
-        "  --debug-drag-sounds  enable drag tones when --debug is also enabled\n"
-        "  --no-debug-drag-sounds  disable saved drag tones\n"
+        "  --debug-drag       enable drag tones when --debug is also enabled\n"
+        "  --no-debug-drag    disable saved drag tones\n"
         "  --debug-wheel      play a tick on wheel-down events (saved independently)\n"
         "  --no-debug-wheel   disable wheel-down ticks\n"
         "\n"
@@ -136,9 +136,9 @@ static bool parse_sequence(
             options->debug = true;
         } else if (strcmp(arg, "--no-debug") == 0) {
             options->debug = false;
-        } else if (strcmp(arg, "--debug-drag-sounds") == 0) {
+        } else if (strcmp(arg, "--debug-drag") == 0) {
             options->debug_drag_sounds = true;
-        } else if (strcmp(arg, "--no-debug-drag-sounds") == 0) {
+        } else if (strcmp(arg, "--no-debug-drag") == 0) {
             options->debug_drag_sounds = false;
         } else if (strcmp(arg, "--debug-wheel") == 0) {
             options->debug_wheel = true;

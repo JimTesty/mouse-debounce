@@ -102,7 +102,7 @@ bool config_write_settings(
     write_buttons(f, buttons);
     fprintf(f, "--sound-volume %.3g\n", sound_volume);
     if (debug) fprintf(f, "--debug\n");
-    if (debug_drag_sounds) fprintf(f, "--debug-drag-sounds\n");
+    if (debug_drag_sounds) fprintf(f, "--debug-drag\n");
     if (debug_wheel) fprintf(f, "--debug-wheel\n");
     if (log) fprintf(f, "--log\n");
 

@@ -189,13 +189,13 @@ alias as canonical `short0-ms`.
 
 `--sound-volume` accepts `0` through `1` and is saved like the other settings;
 `0` silences all sounds. `--debug` enables startup, click, and filter
-diagnostic sounds. `--debug-drag-sounds` additionally enables the dragged-release
+diagnostic sounds. `--debug-drag` additionally enables the dragged-release
 sound, but only when `--debug` is also enabled.
 `--debug-wheel` independently enables a sound on each wheel-down event; it does
 not require `--debug`. With none of these switches, normal filtering is silent.
 These settings persist: use `tools/mousedebouncectl save --debug` to enable
 filter diagnostics across restarts, and `tools/mousedebouncectl save --no-debug`
-to disable them later. Use `tools/mousedebouncectl save --no-debug-drag-sounds`
+to disable them later. Use `tools/mousedebouncectl save --no-debug-drag`
 or `tools/mousedebouncectl save --no-debug-wheel` to disable those saved sounds;
 `--no-debug` does not turn off either independent setting. Disabled flags are
 omitted from the saved config, rather than written as `--no-*` options.
