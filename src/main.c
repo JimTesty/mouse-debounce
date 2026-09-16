@@ -55,7 +55,7 @@ static void play_debug_event_sound(
         if (is_button_down_type(type)) {
             int64_t click_state = CGEventGetIntegerValueField(event, kCGMouseEventClickState);
             if (click_state > 1) debounce_sound_play_click(click_state);
-        } else if (is_button_up_type(type) &&
+        } else if (app->options.debug_drag_sounds && is_button_up_type(type) &&
                    CGEventGetIntegerValueField(event, kCGMouseEventClickState) == 0) {
             debounce_sound_play_dragged();
         }
@@ -249,6 +249,7 @@ int main(int argc, char **argv) {
                 app.options.buttons,
                 app.options.sound_volume,
                 app.options.debug,
+                app.options.debug_drag_sounds,
                 app.options.debug_wheel,
                 app.options.log)) {
             fprintf(app.output, "Could not save config: %s\n", app.options.config_path);

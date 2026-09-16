@@ -24,6 +24,7 @@ bool config_write_settings(
     const bool buttons[MOUSE_BUTTON_COUNT],
     double sound_volume,
     bool debug,
+    bool debug_drag_sounds,
     bool debug_wheel,
     bool log
 );

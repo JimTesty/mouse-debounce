@@ -89,6 +89,7 @@ bool config_write_settings(
     const bool buttons[MOUSE_BUTTON_COUNT],
     double sound_volume,
     bool debug,
+    bool debug_drag_sounds,
     bool debug_wheel,
     bool log
 ) {
@@ -101,6 +102,7 @@ bool config_write_settings(
     write_buttons(f, buttons);
     fprintf(f, "--sound-volume %.3g\n", sound_volume);
     if (debug) fprintf(f, "--debug\n");
+    if (debug_drag_sounds) fprintf(f, "--debug-drag-sounds\n");
     if (debug_wheel) fprintf(f, "--debug-wheel\n");
     if (log) fprintf(f, "--log\n");
 

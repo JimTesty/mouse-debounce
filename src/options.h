@@ -15,6 +15,7 @@ typedef enum {
 typedef struct {
     AppMode mode;
     bool debug;
+    bool debug_drag_sounds;
     bool debug_wheel;
     bool log;
     TimingDraft timing_draft;

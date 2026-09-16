@@ -36,7 +36,7 @@ static void invalid_arguments(void) {
     char *debug[] = {"test", "--no-config", "--debug", "--sound-volume", "0"};
     assert(options_parse(5, debug, &options));
     assert(options.debug && options.sound_volume == 0);
-    assert(!options.debug_wheel && !options.log);
+    assert(!options.debug_drag_sounds && !options.debug_wheel && !options.log);
     char *new_flags[] = {"test", "--no-config", "--debug-wheel", "--log"};
     assert(options_parse(4, new_flags, &options));
     assert(options.debug_wheel && options.log);
@@ -105,15 +105,18 @@ static void precedence_and_roundtrip(void) {
     options.buttons[MOUSE_BUTTON_RIGHT] = false;
     options.sound_volume = 0.25;
     options.debug = true;
+    options.debug_drag_sounds = true;
     options.debug_wheel = true;
     options.log = true;
     assert(config_write_settings(path, &options.timing, options.buttons, options.sound_volume,
-                                 options.debug, options.debug_wheel, options.log));
+                                 options.debug, options.debug_drag_sounds,
+                                 options.debug_wheel, options.log));
     AppOptions loaded;
     char *load_args[] = {"test", "--config", path};
     assert(options_parse(3, load_args, &loaded));
     assert(loaded.sound_volume == 0.25);
     assert(loaded.debug);
+    assert(loaded.debug_drag_sounds);
     assert(loaded.debug_wheel);
     assert(loaded.log);
     for (int i = 0; i < MOUSE_BUTTON_COUNT; ++i) {
@@ -122,12 +125,14 @@ static void precedence_and_roundtrip(void) {
         assert(loaded.timing.hold_ms[i] == options.timing.hold_ms[i]);
         assert(loaded.buttons[i] == options.buttons[i]);
     }
-    char *disable[] = {"test", "--config", path, "--no-debug", "--no-debug-wheel", "--no-log"};
-    assert(options_parse(6, disable, &loaded));
+    char *disable[] = {"test", "--config", path, "--no-debug", "--no-debug-drag-sounds",
+                       "--no-debug-wheel", "--no-log"};
+    assert(options_parse(7, disable, &loaded));
     assert(!loaded.debug);
-    assert(!loaded.debug_wheel && !loaded.log);
+    assert(!loaded.debug_drag_sounds && !loaded.debug_wheel && !loaded.log);
     assert(config_write_settings(path, &loaded.timing, loaded.buttons, loaded.sound_volume,
-                                 loaded.debug, loaded.debug_wheel, loaded.log));
+                                 loaded.debug, loaded.debug_drag_sounds,
+                                 loaded.debug_wheel, loaded.log));
     ConfigTokens saved;
     assert(config_load_tokens(path, &saved));
     bool saw_short0 = false;
@@ -144,6 +149,7 @@ static void precedence_and_roundtrip(void) {
     assert(saw_short0 && saw_hold0);
     assert(options_parse(3, load_args, &loaded));
     assert(!loaded.debug);
+    assert(!loaded.debug_drag_sounds);
     assert(!loaded.debug_wheel);
     assert(!loaded.log);
     char *enable_new_flags[] = {"test", "--config", path, "--debug-wheel", "--log"};
